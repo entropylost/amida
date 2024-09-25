@@ -81,7 +81,7 @@ impl FluenceExpr {
     }
 }
 
-const TRANSMITTANCE_CUTOFF: f32 = 0.01;
+const TRANSMITTANCE_CUTOFF: f32 = 0.001;
 
 fn intersect_intervals(a: Expr<Interval>, b: Expr<Interval>) -> Expr<Interval> {
     Vec2::expr(luisa::max(a.x, b.x), luisa::min(a.y, b.y))
@@ -162,7 +162,12 @@ fn trace_radiance(
 
             *last_t = next_t;
 
-            if next_t >= interval_size || (radiance.transmittance < TRANSMITTANCE_CUTOFF).any() {
+            if (radiance.transmittance < TRANSMITTANCE_CUTOFF).all() {
+                *radiance.transmittance = Vec3::splat(0.0);
+                break;
+            }
+
+            if next_t >= interval_size {
                 break;
             }
         }
