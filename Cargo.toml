@@ -1,0 +1,8 @@
+[package]
+name = "thelema_render"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sefirot = { path = "../sefirot/sefirot", features = ["debug", "trace"] }
+sefirot_testbed = { path = "../sefirot/testbed" }
