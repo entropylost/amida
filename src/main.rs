@@ -179,6 +179,7 @@ fn trace_radiance(
 
         *side_dist += mask.select(delta_dist, Vec2::splat_expr(0.0));
         *pos += mask.select(ray_step, Vec2::splat_expr(0_i32));
+        *last_t = next_t;
     }
 
     **radiance
@@ -683,7 +684,7 @@ fn main() {
                 &pos,
                 &10.0,
                 &Vec3::splat(0.0),
-                &Vec3::new(0.001, 0.01, 0.01),
+                &Vec3::new(0.01, 0.1, 0.1),
             );
         }
 
