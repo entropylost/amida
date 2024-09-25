@@ -487,6 +487,23 @@ fn main() {
         );
     }));
 
+    for i in 0..20 {
+        draw_kernel.dispatch(
+            [512, 512, 1],
+            &Vec2::new(i as f32 * 10.0, 50.0),
+            &10.0,
+            &Vec3::splat(1.0),
+            &Vec3::splat(1.0),
+        );
+        draw_kernel.dispatch(
+            [512, 512, 1],
+            &Vec2::new(300.0 - i as f32 * 10.0, 300.0),
+            &10.0,
+            &Vec3::splat(0.0),
+            &Vec3::splat(1.0),
+        );
+    }
+
     app.run(|rt, scope| {
         if rt.pressed_button(MouseButton::Left) {
             let pos = rt.cursor_position;
