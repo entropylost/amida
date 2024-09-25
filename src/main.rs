@@ -1,10 +1,7 @@
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 
 use glam::Vec3 as FVec3;
-use luisa::lang::types::{
-    array::ArrayExpr,
-    vector::{Vec2, Vec3, Vec4},
-};
+use luisa::lang::types::vector::{Vec2, Vec3};
 use sefirot::prelude::*;
 use sefirot_testbed::{App, KeyCode, MouseButton};
 
@@ -108,6 +105,7 @@ fn aabb_intersect(
 fn trace_radiance(
     color_texture: &Tex2dView<Vec3<f32>>,
     opacity_texture: &Tex2dView<Vec3<f32>>,
+    diff_texture: &Tex2dView<bool>,
     ray_start: Expr<Vec2<f32>>,
     ray_dir: Expr<Vec2<f32>>,
     interval: Expr<Interval>,
@@ -150,26 +148,24 @@ fn trace_radiance(
     for _i in 0_u32.expr()..1000_u32.expr() {
         let next_t = side_dist.reduce_min();
 
-        let segment_size = luisa::min(next_t, interval_size) - last_t;
+        if diff_texture.read(pos.cast_u32()) {
+            let segment_size = luisa::min(next_t, interval_size) - last_t;
+            let color = color_texture.read(pos.cast_u32());
+            let opacity = opacity_texture.read(pos.cast_u32());
+            *radiance = radiance.over(
+                Color::from_comps_expr(ColorComps {
+                    radiance: color,
+                    opacity,
+                })
+                .as_fluence(segment_size),
+            );
 
-        let color = color_texture.read(pos.cast_u32());
-        let opacity = opacity_texture.read(pos.cast_u32());
+            *last_t = next_t;
 
-        // if (opacity != 0.0).any() {
-        //     *radiance = Fluence::from_comps_expr(FluenceComps {
-        //         radiance: color,
-        //         transmittance: Vec3::splat_expr(0.0),
-        //     });
-        //     break;
-        // }
-
-        *radiance = radiance.over(
-            Color::from_comps_expr(ColorComps {
-                radiance: color,
-                opacity,
-            })
-            .as_fluence(segment_size),
-        );
+            if (radiance.transmittance < TRANSMITTANCE_CUTOFF).any() {
+                break;
+            }
+        }
 
         if next_t >= interval_size {
             break;
@@ -179,7 +175,6 @@ fn trace_radiance(
 
         *side_dist += mask.select(delta_dist, Vec2::splat_expr(0.0));
         *pos += mask.select(ray_step, Vec2::splat_expr(0_i32));
-        *last_t = next_t;
     }
 
     **radiance
@@ -316,9 +311,8 @@ impl<T: Value> CascadeStorage<T> {
         let cascade_size = self.settings.level_size_expr(ray.cascade);
         // Store rays with same direction near to each other.
         let linear_index = ray.probe.x + ray.probe.y * cascade_size.probes.x;
-        ray.cascade * cascade_total_size
-            + linear_index
-            + ray.direction * cascade_size.probes.reduce_prod()
+        // Other way seems to run slightly slower.
+        ray.cascade * cascade_total_size + linear_index * cascade_size.directions + ray.direction
     }
     #[tracked]
     fn read(&self, ray: Expr<RayLocation>) -> Expr<T> {
@@ -367,6 +361,7 @@ impl RadianceCascades {
         settings: CascadeSettings,
         color_texture: Tex2dView<Vec3<f32>>,
         opacity_texture: Tex2dView<Vec3<f32>>,
+        diff_texture: Tex2dView<bool>,
         environment: BufferView<Vec3<f32>>,
     ) -> Self {
         let radiance = CascadeStorage::new(settings);
@@ -398,6 +393,7 @@ impl RadianceCascades {
                 let ray_fluence = trace_radiance(
                     &color_texture,
                     &opacity_texture,
+                    &diff_texture,
                     ray_start,
                     (ray_end - ray_start).normalize(),
                     Vec2::expr(0.0, (ray_end - ray_start).length()),
@@ -425,6 +421,7 @@ impl RadianceCascades {
                 radiance.write(ray, ray_fluence.over_color(avg_radiance));
             })),
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
+                set_block_size([1, 1, 32]);
                 let direction = dispatch_id().z;
                 let probe = dispatch_id().xy();
                 let ray = RayLocation::from_comps_expr(RayLocationComps {
@@ -457,6 +454,7 @@ impl RadianceCascades {
                     let ray_fluence = trace_radiance(
                         &color_texture,
                         &opacity_texture,
+                        &diff_texture,
                         ray_start,
                         (ray_end - ray_start).normalize(),
                         Vec2::expr(0.0, (ray_end - ray_start).length()),
@@ -512,6 +510,7 @@ impl RadianceCascades {
                     let ray_fluence = trace_radiance(
                         &color_texture,
                         &opacity_texture,
+                        &diff_texture,
                         ray_start,
                         (ray_end - ray_start).normalize(),
                         Vec2::expr(0.0, (ray_end - ray_start).length()),
@@ -612,7 +611,7 @@ fn main() {
             base_probe_spacing: 1.0,
             base_size: CascadeSize {
                 probes: Vec2::new(512, 512),
-                directions: 4,
+                directions: 1, // 4 normally.
             },
             num_cascades: 6,
             spatial_factor: 1,
@@ -622,19 +621,47 @@ fn main() {
 
     let color_texture = DEVICE.create_tex2d(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
     let opacity_texture = DEVICE.create_tex2d(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
+    let diff_texture = DEVICE.create_tex2d(PixelStorage::Byte1, grid_size[0], grid_size[1], 1);
 
     let env_dirs = cascades.level_size(cascades.num_cascades).directions;
     let environment_buffer = DEVICE.create_buffer_from_fn(env_dirs as usize, |i| {
         let angle = TAU - i as f32 / env_dirs as f32 * TAU;
-        Vec3::splat(0.0) // Vec3::from(skylight(angle))
+        Vec3::from(skylight(angle))
     });
 
     let radiance_cascades = RadianceCascades::new(
         cascades,
         color_texture.view(0),
         opacity_texture.view(0),
+        diff_texture.view(0),
         environment_buffer.view(..),
     );
+
+    let update_diff_kernel = DEVICE.create_kernel::<fn()>(&track!(|| {
+        let pos = dispatch_id().xy();
+        let diff = false.var();
+        let color = color_texture.read(pos);
+        let opacity = opacity_texture.read(pos);
+        for i in 0_u32.expr()..4_u32.expr() {
+            let offset = [
+                Vec2::new(1, 0),
+                Vec2::new(-1, 0),
+                Vec2::new(0, 1),
+                Vec2::new(0, -1),
+            ]
+            .expr()[i];
+            let neighbor = pos.cast_i32() + offset;
+            if (neighbor >= 0).all() && (neighbor < Vec2::from(grid_size).expr().cast_i32()).all() {
+                let neighbor_color = color_texture.read(neighbor.cast_u32());
+                let neighbor_opacity = opacity_texture.read(neighbor.cast_u32());
+                if (neighbor_color != color).any() || (neighbor_opacity != opacity).any() {
+                    *diff = true;
+                    break;
+                }
+            }
+        }
+        diff_texture.write(pos, **diff);
+    }));
 
     let draw_kernel = DEVICE.create_kernel::<fn(Vec2<f32>, f32, Vec3<f32>, Vec3<f32>)>(&track!(
         |pos, radius, color, opacity| {
@@ -664,9 +691,45 @@ fn main() {
         );
     }));
 
-    let mut merge_variant = 2;
+    let mut merge_variant = 1;
+
+    let mut t = 0;
+
+    draw_kernel.dispatch(
+        [512, 512, 1],
+        &Vec2::new(256.0, 256.0),
+        &40.0,
+        &Vec3::splat(0.0),
+        &Vec3::splat(1.0),
+    );
+
+    draw_kernel.dispatch(
+        [512, 512, 1],
+        &Vec2::new(400.0, 256.0),
+        &10.0,
+        &Vec3::splat(10.0),
+        &Vec3::splat(1.0),
+    );
+
+    draw_kernel.dispatch(
+        [512, 512, 1],
+        &Vec2::new(200.0, 100.0),
+        &40.0,
+        &Vec3::splat(0.0),
+        &Vec3::new(0.01, 0.1, 0.1),
+    );
+
+    update_diff_kernel.dispatch([512, 512, 1]);
 
     app.run(|rt, scope| {
+        if rt.pressed_key(KeyCode::KeyR) {
+            rt.begin_recording(None, false);
+        }
+
+        t += 1;
+
+        let pos = Vec2::new(200.0 + 100.0 * (t as f32 / 40.0).cos(), 200.0);
+
         if rt.pressed_button(MouseButton::Left) {
             let pos = rt.cursor_position;
             draw_kernel.dispatch(
@@ -705,7 +768,7 @@ fn main() {
 
         if rt.just_pressed_key(KeyCode::Space) {
             let timings = radiance_cascades.update(merge_variant).execute_timed();
-            println!("{:?}", timings);
+            // println!("{:?}", timings);
             println!("Total: {:?}", timings.iter().map(|(_, t)| t).sum::<f32>());
         }
 
