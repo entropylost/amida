@@ -46,7 +46,7 @@ impl ColorExpr {
     fn as_fluence(&self, segment_size: Expr<f32>) -> Expr<Fluence> {
         let color = self.self_;
         Fluence::from_comps_expr(FluenceComps {
-            radiance: color.radiance,
+            radiance: color.radiance * (1.0 - (-color.opacity * segment_size).exp()),
             transmittance: (-color.opacity * segment_size).exp(),
         })
     }
@@ -263,6 +263,7 @@ impl CascadeSettings {
     }
     #[tracked]
     fn interval_end(&self, level: Expr<u32>) -> Expr<f32> {
+        // TODO: Change?
         self.base_interval_size() * (1_u32 << (self.angular_factor * level)).cast_f32()
     }
     #[tracked]
@@ -293,7 +294,7 @@ impl CascadeSettings {
         })
     }
     fn cascade_total_size(&self) -> u32 {
-        assert_eq!(self.spatial_factor * 2, self.angular_factor); // So they cancel out. Still not quite exact.
+        assert!(self.spatial_factor * 2 >= self.angular_factor); // So they cancel out. Still not quite exact.
         self.base_size.probes.x * self.base_size.probes.y * self.base_size.directions
     }
 }
@@ -592,16 +593,30 @@ fn main() {
         .agx()
         .init();
 
-    let cascades = CascadeSettings {
-        base_interval_size: 1.0,
-        base_probe_spacing: 1.0,
-        base_size: CascadeSize {
-            probes: Vec2::new(512, 512),
-            directions: 4, // This is allowable since I use bilinear tracing so the first level actually traces 4 rays.
-        },
-        num_cascades: 5,
-        spatial_factor: 1,
-        angular_factor: 2,
+    let cascades = if false {
+        CascadeSettings {
+            base_interval_size: 11.0,
+            base_probe_spacing: 1.0,
+            base_size: CascadeSize {
+                probes: Vec2::new(512, 512),
+                directions: 64,
+            },
+            num_cascades: 9,
+            spatial_factor: 1,
+            angular_factor: 1,
+        }
+    } else {
+        CascadeSettings {
+            base_interval_size: 1.2,
+            base_probe_spacing: 1.0,
+            base_size: CascadeSize {
+                probes: Vec2::new(512, 512),
+                directions: 4,
+            },
+            num_cascades: 6,
+            spatial_factor: 1,
+            angular_factor: 2,
+        }
     };
 
     let color_texture = DEVICE.create_tex2d(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
