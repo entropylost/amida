@@ -1,7 +1,10 @@
 use std::f32::consts::{PI, TAU};
 
 use glam::Vec3 as FVec3;
-use luisa::lang::types::vector::{Vec2, Vec3};
+use luisa::lang::types::{
+    array::ArrayExpr,
+    vector::{Vec2, Vec3, Vec4},
+};
 use sefirot::prelude::*;
 use sefirot_testbed::{App, KeyCode, MouseButton};
 
@@ -152,14 +155,23 @@ fn trace_radiance(
         let color = color_texture.read(pos.cast_u32());
         let opacity = opacity_texture.read(pos.cast_u32());
 
-        *radiance = Color::from_comps_expr(ColorComps {
-            radiance: color,
-            opacity,
-        })
-        .as_fluence(segment_size)
-        .over(**radiance);
+        // if (opacity != 0.0).any() {
+        //     *radiance = Fluence::from_comps_expr(FluenceComps {
+        //         radiance: color,
+        //         transmittance: Vec3::splat_expr(0.0),
+        //     });
+        //     break;
+        // }
 
-        if next_t >= interval_size || radiance.transmittance.reduce_max() < TRANSMITTANCE_CUTOFF {
+        *radiance = radiance.over(
+            Color::from_comps_expr(ColorComps {
+                radiance: color,
+                opacity,
+            })
+            .as_fluence(segment_size),
+        );
+
+        if next_t >= interval_size {
             break;
         }
 
@@ -177,6 +189,26 @@ fn trace_radiance(
 struct BilinearSamples {
     base_index: Vec2<u32>,
     fract: Vec2<f32>,
+}
+impl BilinearSamplesExpr {
+    #[tracked]
+    fn sample(&self, index: Expr<u32>) -> (Expr<Vec2<u32>>, Expr<f32>) {
+        let fract = self.fract;
+        let weights = <[_; 4]>::from_elems_expr([
+            (1.0 - fract.x) * (1.0 - fract.y),
+            fract.x * (1.0 - fract.y),
+            (1.0 - fract.x) * fract.y,
+            fract.x * fract.y,
+        ]);
+        let indices = [
+            Vec2::new(0, 0),
+            Vec2::new(1, 0),
+            Vec2::new(0, 1),
+            Vec2::new(1, 1),
+        ]
+        .expr();
+        (indices[index] + self.base_index, weights[index])
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -325,8 +357,9 @@ struct RayLocation {
 struct RadianceCascades {
     settings: CascadeSettings,
     radiance: CascadeStorage<Vec3<f32>>,
-    merge_kernels: [luisa::runtime::Kernel<fn(u32)>; 2],
+    merge_kernels: [luisa::runtime::Kernel<fn(u32)>; 3],
 }
+
 impl RadianceCascades {
     fn new(
         settings: CascadeSettings,
@@ -336,7 +369,7 @@ impl RadianceCascades {
     ) -> Self {
         let radiance = CascadeStorage::new(settings);
 
-        let merge_kernels = [false, true].map(|cheap| {
+        let merge_kernels = [
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
                 let direction = dispatch_id().z;
                 let probe = dispatch_id().xy();
@@ -350,56 +383,27 @@ impl RadianceCascades {
 
                 let ray_dir = settings.dir_of(direction, level);
 
-                let total_radiance = Vec3::splat(0.0_f32).var();
-
                 let interval = settings.interval(level);
 
                 let next_cascade = level + 1;
                 let samples = settings.bilinear_samples(probe, next_cascade);
 
-                let cheap_values = if cheap {
-                    let rand = pcg3df(dispatch_id() + Vec3::expr(0, 0, level << 16));
-                    let next_probe = samples.base_index + (rand.xy() < samples.fract).cast_u32();
-                    let next_probe_pos = settings.probe_location(next_probe, next_cascade);
-                    let ray_start = probe_pos + ray_dir * interval.x;
-                    let ray_end = next_probe_pos + ray_dir * interval.y;
-                    let ray_fluence = trace_radiance(
-                        &color_texture,
-                        &opacity_texture,
-                        ray_start,
-                        (ray_end - ray_start).normalize(),
-                        Vec2::expr(0.0, (ray_end - ray_start).length()),
-                    );
-                    Some((next_probe, ray_fluence))
-                } else {
-                    None
-                };
+                let rand = pcg3df(dispatch_id() + Vec3::expr(0, 0, level << 16));
+                let next_probe = samples.base_index + (rand.xy() < samples.fract).cast_u32();
+                let next_probe_pos = settings.probe_location(next_probe, next_cascade);
+                let ray_start = probe_pos + ray_dir * interval.x;
+                let ray_end = next_probe_pos + ray_dir * interval.y;
+                let ray_fluence = trace_radiance(
+                    &color_texture,
+                    &opacity_texture,
+                    ray_start,
+                    (ray_end - ray_start).normalize(),
+                    Vec2::expr(0.0, (ray_end - ray_start).length()),
+                );
 
+                let total_radiance = Vec3::splat(0.0_f32).var();
                 for i in 0_u32.expr()..settings.branches().expr() {
                     let next_direction = direction * settings.branches() + i;
-                    let (next_probe, ray_fluence) = if !cheap {
-                        let rand = pcg3df(dispatch_id() + Vec3::expr(0, i << 16, level << 16));
-                        let next_probe =
-                            samples.base_index + (rand.xy() < samples.fract).cast_u32();
-                        let next_probe_pos = settings.probe_location(next_probe, next_cascade);
-
-                        let next_ray_dir = settings.dir_of(next_direction, next_cascade);
-
-                        let ray_start = probe_pos + ray_dir * interval.x;
-                        let ray_end = next_probe_pos + next_ray_dir * interval.y;
-
-                        let ray_fluence = trace_radiance(
-                            &color_texture,
-                            &opacity_texture,
-                            ray_start,
-                            (ray_end - ray_start).normalize(),
-                            Vec2::expr(0.0, (ray_end - ray_start).length()),
-                        );
-
-                        (next_probe, ray_fluence)
-                    } else {
-                        cheap_values.unwrap()
-                    };
 
                     let next_ray = RayLocation::from_comps_expr(RayLocationComps {
                         probe: next_probe,
@@ -413,14 +417,130 @@ impl RadianceCascades {
                         environment.read(next_direction)
                     };
 
-                    // If cheap, can optimize this a little.
+                    *total_radiance += next_radiance;
+                }
+                let avg_radiance = total_radiance / settings.branches() as f32;
+                radiance.write(ray, ray_fluence.over_color(avg_radiance));
+            })),
+            DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
+                let direction = dispatch_id().z;
+                let probe = dispatch_id().xy();
+                let ray = RayLocation::from_comps_expr(RayLocationComps {
+                    probe,
+                    direction,
+                    cascade: level,
+                });
+
+                let probe_pos = settings.probe_location(probe, level);
+
+                let ray_dir = settings.dir_of(direction, level);
+
+                let interval = settings.interval(level);
+
+                let next_cascade = level + 1;
+                let samples = settings.bilinear_samples(probe, next_cascade);
+
+                let total_radiance = Vec3::splat(0.0_f32).var();
+                for i in 0_u32.expr()..settings.branches().expr() {
+                    let next_direction = direction * settings.branches() + i;
+                    let rand = pcg3df(dispatch_id() + Vec3::expr(0, i << 16, level << 16));
+                    let next_probe = samples.base_index + (rand.xy() < samples.fract).cast_u32();
+                    let next_probe_pos = settings.probe_location(next_probe, next_cascade);
+
+                    let next_ray_dir = settings.dir_of(next_direction, next_cascade);
+
+                    let ray_start = probe_pos + ray_dir * interval.x;
+                    let ray_end = next_probe_pos + next_ray_dir * interval.y;
+
+                    let ray_fluence = trace_radiance(
+                        &color_texture,
+                        &opacity_texture,
+                        ray_start,
+                        (ray_end - ray_start).normalize(),
+                        Vec2::expr(0.0, (ray_end - ray_start).length()),
+                    );
+
+                    let next_ray = RayLocation::from_comps_expr(RayLocationComps {
+                        probe: next_probe,
+                        direction: next_direction,
+                        cascade: next_cascade,
+                    });
+
+                    let next_radiance = if next_cascade < settings.num_cascades {
+                        radiance.read(next_ray)
+                    } else {
+                        environment.read(next_direction)
+                    };
+
                     let merged_radiance = ray_fluence.over_color(next_radiance);
                     *total_radiance += merged_radiance;
                 }
                 let avg_radiance = total_radiance / settings.branches() as f32;
                 radiance.write(ray, avg_radiance);
-            }))
-        });
+            })),
+            DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
+                let direction = dispatch_id().z;
+                let probe = dispatch_id().xy();
+                let ray = RayLocation::from_comps_expr(RayLocationComps {
+                    probe,
+                    direction,
+                    cascade: level,
+                });
+
+                let probe_pos = settings.probe_location(probe, level);
+
+                let ray_dir = settings.dir_of(direction, level);
+
+                let interval = settings.interval(level);
+
+                let next_cascade = level + 1;
+                let samples = settings.bilinear_samples(probe, next_cascade);
+
+                let out_radiance = Vec3::splat(0.0_f32).var();
+
+                for probe_offset in 0_u32.expr()..4_u32.expr() {
+                    let (next_probe, weight) = samples.sample(probe_offset);
+                    if (next_probe >= settings.level_size_expr(next_cascade).probes).any() {
+                        continue;
+                    }
+                    let next_probe_pos = settings.probe_location(next_probe, next_cascade);
+                    let ray_start = probe_pos + ray_dir * interval.x;
+                    let ray_end = next_probe_pos + ray_dir * interval.y;
+
+                    let ray_fluence = trace_radiance(
+                        &color_texture,
+                        &opacity_texture,
+                        ray_start,
+                        (ray_end - ray_start).normalize(),
+                        Vec2::expr(0.0, (ray_end - ray_start).length()),
+                    );
+
+                    let total_radiance = Vec3::splat(0.0_f32).var();
+
+                    for i in 0_u32.expr()..settings.branches().expr() {
+                        let next_direction = direction * settings.branches() + i;
+                        let next_ray = RayLocation::from_comps_expr(RayLocationComps {
+                            probe: next_probe,
+                            direction: next_direction,
+                            cascade: next_cascade,
+                        });
+
+                        let next_radiance = if next_cascade < settings.num_cascades {
+                            radiance.read(next_ray)
+                        } else {
+                            environment.read(next_direction)
+                        };
+                        *total_radiance += next_radiance;
+                    }
+
+                    let merged_radiance =
+                        ray_fluence.over_color(total_radiance / settings.branches() as f32);
+                    *out_radiance += merged_radiance * weight;
+                }
+
+                radiance.write(ray, **out_radiance);
+            })),
+        ];
 
         Self {
             settings,
@@ -428,12 +548,12 @@ impl RadianceCascades {
             merge_kernels,
         }
     }
-    fn update(&self, cheap: bool) -> impl AsNodes {
+    fn update(&self, variant: usize) -> impl AsNodes {
         let mut commands = vec![];
         for level in (0..self.settings.num_cascades).rev() {
             let level_size = self.settings.level_size(level);
             commands.push(
-                self.merge_kernels[cheap as usize]
+                self.merge_kernels[variant]
                     .dispatch_async(
                         [
                             level_size.probes.x,
@@ -477,7 +597,7 @@ fn main() {
         base_probe_spacing: 1.0,
         base_size: CascadeSize {
             probes: Vec2::new(512, 512),
-            directions: 1, // This is allowable since I use bilinear tracing so the first level actually traces 4 rays.
+            directions: 4, // This is allowable since I use bilinear tracing so the first level actually traces 4 rays.
         },
         num_cascades: 5,
         spatial_factor: 1,
@@ -490,7 +610,7 @@ fn main() {
     let env_dirs = cascades.level_size(cascades.num_cascades).directions;
     let environment_buffer = DEVICE.create_buffer_from_fn(env_dirs as usize, |i| {
         let angle = TAU - i as f32 / env_dirs as f32 * TAU;
-        Vec3::from(skylight(angle))
+        Vec3::splat(0.0) // Vec3::from(skylight(angle))
     });
 
     let radiance_cascades = RadianceCascades::new(
@@ -528,6 +648,8 @@ fn main() {
         );
     }));
 
+    let mut merge_variant = 2;
+
     app.run(|rt, scope| {
         if rt.pressed_button(MouseButton::Left) {
             let pos = rt.cursor_position;
@@ -536,7 +658,7 @@ fn main() {
                 &pos,
                 &10.0,
                 &Vec3::splat(1.0),
-                &Vec3::splat(1.0),
+                &Vec3::splat(0.3),
             );
         }
         if rt.pressed_button(MouseButton::Middle) {
@@ -561,10 +683,12 @@ fn main() {
             );
         }
 
-        if rt.just_pressed_key(KeyCode::Space) || rt.just_pressed_key(KeyCode::Enter) {
-            let timings = radiance_cascades
-                .update(rt.just_pressed_key(KeyCode::Enter))
-                .execute_timed();
+        if rt.just_pressed_key(KeyCode::Enter) {
+            merge_variant = (merge_variant + 1) % 3;
+        }
+
+        if rt.just_pressed_key(KeyCode::Space) {
+            let timings = radiance_cascades.update(merge_variant).execute_timed();
             println!("{:?}", timings);
             println!("Total: {:?}", timings.iter().map(|(_, t)| t).sum::<f32>());
         }
