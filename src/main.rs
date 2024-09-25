@@ -388,7 +388,7 @@ impl RadianceCascades {
                 let next_radiance = if next_cascade < settings.num_cascades {
                     radiance.read(next_ray)
                 } else {
-                    Vec3::splat_expr(0.0_f32)
+                    environment.read(next_direction)
                 };
 
                 let merged_radiance = ray_fluence.over_color(next_radiance);
@@ -434,23 +434,29 @@ fn main() {
         .agx()
         .init();
 
+    let cascades = CascadeSettings {
+        base_interval_size: 2.0,
+        base_probe_spacing: 1.0,
+        base_size: CascadeSize {
+            probes: Vec2::new(512, 512),
+            directions: 1, // This is allowable since I use bilinear tracing so the first level actually traces 4 rays.
+        },
+        num_cascades: 5,
+        spatial_factor: 1,
+        angular_factor: 2,
+    };
+
     let color_texture = DEVICE.create_tex2d(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
     let opacity_texture = DEVICE.create_tex2d(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
 
+    let environment_buffer =
+        DEVICE.create_buffer(cascades.level_size(cascades.num_cascades).directions as usize);
+
     let radiance_cascades = RadianceCascades::new(
-        CascadeSettings {
-            base_interval_size: 2.0,
-            base_probe_spacing: 1.0,
-            base_size: CascadeSize {
-                probes: Vec2::new(512, 512),
-                directions: 4,
-            },
-            num_cascades: 5,
-            spatial_factor: 1,
-            angular_factor: 2,
-        },
+        cascades,
         color_texture.view(0),
         opacity_texture.view(0),
+        environment_buffer.view(..),
     );
 
     let draw_kernel = DEVICE.create_kernel::<fn(Vec2<f32>, f32, Vec3<f32>, Vec3<f32>)>(&track!(
@@ -506,6 +512,7 @@ fn main() {
         if rt.just_pressed_key(KeyCode::Space) {
             let timings = radiance_cascades.update().execute_timed();
             println!("{:?}", timings);
+            println!("Total: {:?}", timings.iter().map(|(_, t)| t).sum::<f32>());
         }
 
         scope.submit([display_kernel.dispatch_async([512, 512, 1])]);
