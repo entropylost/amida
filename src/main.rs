@@ -1,5 +1,6 @@
-use std::f32::consts::TAU;
+use std::f32::consts::{PI, TAU};
 
+use glam::Vec3 as FVec3;
 use luisa::lang::types::vector::{Vec2, Vec3};
 use sefirot::prelude::*;
 use sefirot_testbed::{App, KeyCode, MouseButton};
@@ -448,6 +449,20 @@ impl RadianceCascades {
     }
 }
 
+fn skylight(angle: f32) -> FVec3 {
+    let sky_color = FVec3::new(0.3, 0.7, 1.0);
+    let sun_color = FVec3::new(1.0, 1.0, 0.8) * 3.0;
+    let sun_size = 0.3;
+    let sun_angle = 1.0;
+
+    let sun_color = if (angle - sun_angle).abs() < sun_size {
+        sun_color
+    } else {
+        FVec3::ZERO
+    };
+    sun_color + sky_color * angle.sin().max(0.0).powi(2)
+}
+
 fn main() {
     let grid_size = [512, 512];
 
@@ -458,7 +473,7 @@ fn main() {
         .init();
 
     let cascades = CascadeSettings {
-        base_interval_size: 2.0,
+        base_interval_size: 1.0,
         base_probe_spacing: 1.0,
         base_size: CascadeSize {
             probes: Vec2::new(512, 512),
@@ -472,8 +487,11 @@ fn main() {
     let color_texture = DEVICE.create_tex2d(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
     let opacity_texture = DEVICE.create_tex2d(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
 
-    let environment_buffer =
-        DEVICE.create_buffer(cascades.level_size(cascades.num_cascades).directions as usize);
+    let env_dirs = cascades.level_size(cascades.num_cascades).directions;
+    let environment_buffer = DEVICE.create_buffer_from_fn(env_dirs as usize, |i| {
+        let angle = TAU - i as f32 / env_dirs as f32 * TAU;
+        Vec3::from(skylight(angle))
+    });
 
     let radiance_cascades = RadianceCascades::new(
         cascades,
@@ -521,6 +539,17 @@ fn main() {
                 &Vec3::splat(1.0),
             );
         }
+        if rt.pressed_button(MouseButton::Middle) {
+            let pos = rt.cursor_position;
+            draw_kernel.dispatch(
+                [512, 512, 1],
+                &pos,
+                &10.0,
+                &Vec3::splat(0.0),
+                &Vec3::new(0.001, 0.01, 0.01),
+            );
+        }
+
         if rt.pressed_button(MouseButton::Right) {
             let pos = rt.cursor_position;
             draw_kernel.dispatch(

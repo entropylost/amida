@@ -5,5 +5,6 @@ edition = "2021"
 default-run = "thelema_render"
 
 [dependencies]
-sefirot = { path = "../sefirot/sefirot", features = ["debug", "trace"] }
+glam = "0.27.0"
+sefirot = { path = "../sefirot/sefirot", features = ["debug", "trace", "glam"] }
 sefirot_testbed = { path = "../sefirot/testbed" }
