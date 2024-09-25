@@ -148,7 +148,7 @@ fn trace_radiance(
     for _i in 0_u32.expr()..1000_u32.expr() {
         let next_t = side_dist.reduce_min();
 
-        if diff_texture.read(pos.cast_u32()) {
+        if diff_texture.read(pos.cast_u32()) || next_t >= interval_size {
             let segment_size = luisa::min(next_t, interval_size) - last_t;
             let color = color_texture.read(pos.cast_u32());
             let opacity = opacity_texture.read(pos.cast_u32());
@@ -162,13 +162,9 @@ fn trace_radiance(
 
             *last_t = next_t;
 
-            if (radiance.transmittance < TRANSMITTANCE_CUTOFF).any() {
+            if next_t >= interval_size || (radiance.transmittance < TRANSMITTANCE_CUTOFF).any() {
                 break;
             }
-        }
-
-        if next_t >= interval_size {
-            break;
         }
 
         let mask = side_dist <= side_dist.yx();
@@ -368,6 +364,7 @@ impl RadianceCascades {
 
         let merge_kernels = [
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
+                set_block_size([1, 1, 32]);
                 let direction = dispatch_id().z;
                 let probe = dispatch_id().xy();
                 let ray = RayLocation::from_comps_expr(RayLocationComps {
@@ -687,11 +684,13 @@ fn main() {
         let color = color_texture.read(dispatch_id().xy());
         app.display().write(
             dispatch_id().xy(),
-            color * opacity + radiance * (1.0 - opacity),
+            color * opacity
+                + radiance * (1.0 - opacity)
+                + diff_texture.read(dispatch_id().xy()).cast_u32().cast_f32() * 10.0,
         );
     }));
 
-    let mut merge_variant = 1;
+    let mut merge_variant = 0;
 
     let mut t = 0;
 
@@ -728,7 +727,7 @@ fn main() {
 
         t += 1;
 
-        let pos = Vec2::new(200.0 + 100.0 * (t as f32 / 40.0).cos(), 200.0);
+        // let pos = Vec2::new(200.0 + 100.0 * (t as f32 / 40.0).cos(), 200.0);
 
         if rt.pressed_button(MouseButton::Left) {
             let pos = rt.cursor_position;
@@ -766,11 +765,16 @@ fn main() {
             merge_variant = (merge_variant + 1) % 3;
         }
 
-        if rt.just_pressed_key(KeyCode::Space) {
-            let timings = radiance_cascades.update(merge_variant).execute_timed();
-            // println!("{:?}", timings);
-            println!("Total: {:?}", timings.iter().map(|(_, t)| t).sum::<f32>());
-        }
+        // if rt.just_pressed_key(KeyCode::Space) {
+        let timings = (
+            update_diff_kernel.dispatch([512, 512, 1]),
+            radiance_cascades.update(merge_variant),
+        )
+            .chain()
+            .execute_timed();
+        // println!("{:?}", timings);
+        println!("Total: {:?}", timings.iter().map(|(_, t)| t).sum::<f32>());
+        // }
 
         scope.submit([display_kernel.dispatch_async([512, 512, 1])]);
     });
