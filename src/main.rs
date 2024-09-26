@@ -53,30 +53,28 @@ fn main() {
         .agx()
         .init();
 
-    let cascades = if false {
-        CascadeSettings {
-            base_interval: (0.0, 11.0),
-            base_probe_spacing: 1.0,
-            base_size: CascadeSize {
-                probes: Vec2::new(512, 512),
-                facings: 64,
-            },
-            num_cascades: 9,
-            spatial_factor: 1,
-            angular_factor: 1,
-        }
-    } else {
-        CascadeSettings {
-            base_interval: (0.0, 1.5),
-            base_probe_spacing: 1.0,
-            base_size: CascadeSize {
-                probes: Vec2::new(512, 512),
-                facings: 1, // 4 normally.
-            },
-            num_cascades: 6,
-            spatial_factor: 1,
-            angular_factor: 2,
-        }
+    let bounce_cascades = CascadeSettings {
+        base_interval: (1.5, 6.0),
+        base_probe_spacing: 2.0,
+        base_size: CascadeSize {
+            probes: Vec2::new(256, 256),
+            facings: 4, // 4 normally.
+        },
+        num_cascades: 5,
+        spatial_factor: 1,
+        angular_factor: 2,
+    };
+
+    let cascades = CascadeSettings {
+        base_interval: (0.0, 1.5),
+        base_probe_spacing: 1.0,
+        base_size: CascadeSize {
+            probes: Vec2::new(512, 512),
+            facings: 4, // 4 normally.
+        },
+        num_cascades: 6,
+        spatial_factor: 1,
+        angular_factor: 2,
     };
 
     let env_facings = cascades.level_size(cascades.num_cascades).facings;
@@ -100,6 +98,7 @@ fn main() {
     //     DEVICE.create_tex2d::<Vec3<f32>>(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
 
     let radiance_cascades = RadianceCascades::new(cascades, &world);
+    let bounce_radiance_cascades = RadianceCascades::new(bounce_cascades, &world);
 
     let reset_radiance_kernel = DEVICE.create_kernel::<fn()>(&track!(|| {
         world
@@ -110,20 +109,22 @@ fn main() {
         let total_radiance = Vec3::splat(0.0_f32).var();
         for i in 0_u32.expr()..cascades.facing_count(level) {
             let ray = RayLocation::from_comps_expr(RayLocationComps {
-                probe: dispatch_id().xy() / (1_u32 << (cascades.spatial_factor * level)),
+                probe: dispatch_id().xy() / (2_u32 << (bounce_cascades.spatial_factor * level)),
                 facing: i,
                 level,
             });
-            *total_radiance += radiance_cascades.radiance.read(ray);
+            *total_radiance += bounce_radiance_cascades.radiance.read(ray);
         }
-        let radiance = total_radiance / cascades.facing_count(level).cast_f32();
+        let radiance = total_radiance / bounce_cascades.facing_count(level).cast_f32();
 
         let diffuse = diffuse.read(dispatch_id().xy());
         let emissive = emissive.read(dispatch_id().xy());
 
+        // if (world.opacity.read(dispatch_id().xy()) != 0.0).any() {
         world
             .radiance
             .write(dispatch_id().xy(), radiance * diffuse + emissive);
+        // }
     }));
 
     let update_diff_kernel = DEVICE.create_kernel::<fn()>(&track!(|| {
@@ -182,7 +183,7 @@ fn main() {
         let radiance = total_radiance / cascades.facing_count(level).cast_f32();
         app.display().write(
             dispatch_id().xy(),
-            radiance, //  * diffuse.read(dispatch_id().xy()),
+            radiance, // world.radiance.read(dispatch_id().xy()), //  * diffuse.read(dispatch_id().xy()),
         );
     }));
 
@@ -191,34 +192,7 @@ fn main() {
     let mut t = 0;
 
     // copy_kernel.dispatch([512, 512, 1], &Vec3::splat(1.0), &background);
-    copy_kernel.dispatch([512, 512, 1], &Vec3::splat(0.0), &world.opacity);
-
-    draw_kernel.dispatch(
-        [512, 512, 1],
-        &Vec2::new(256.0, 256.0),
-        &40.0,
-        &Vec3::splat(0.0),
-        &Vec3::splat(0.7),
-        &Vec3::splat(f32::INFINITY),
-    );
-
-    draw_kernel.dispatch(
-        [512, 512, 1],
-        &Vec2::new(400.0, 256.0),
-        &10.0,
-        &Vec3::splat(10.0),
-        &Vec3::splat(0.0),
-        &Vec3::splat(0.3),
-    );
-
-    draw_kernel.dispatch(
-        [512, 512, 1],
-        &Vec2::new(200.0, 100.0),
-        &40.0,
-        &Vec3::splat(0.0),
-        &Vec3::splat(0.0),
-        &Vec3::new(0.01, 0.1, 0.1),
-    );
+    // copy_kernel.dispatch([512, 512, 1], &Vec3::splat(0.0), &world.opacity);
 
     let mut total_runtime = 0.0;
 
@@ -238,11 +212,22 @@ fn main() {
                 &pos,
                 &10.0,
                 &Vec3::splat(0.0),
-                &Vec3::splat(0.7),
-                &Vec3::splat(f32::INFINITY),
+                &Vec3::splat(1.0),
+                &Vec3::splat(0.4),
             );
         }
         if rt.pressed_button(MouseButton::Middle) {
+            let pos = rt.cursor_position;
+            draw_kernel.dispatch(
+                [512, 512, 1],
+                &pos,
+                &10.0,
+                &Vec3::splat(0.0),
+                &Vec3::splat(0.0),
+                &Vec3::splat(0.0),
+            );
+        }
+        if rt.pressed_button(MouseButton::Back) {
             let pos = rt.cursor_position;
             draw_kernel.dispatch(
                 [512, 512, 1],
@@ -260,7 +245,7 @@ fn main() {
                 [512, 512, 1],
                 &pos,
                 &10.0,
-                &Vec3::splat(10.0),
+                &Vec3::splat(15.0),
                 &Vec3::splat(0.0),
                 &Vec3::splat(0.3),
             );
@@ -274,11 +259,15 @@ fn main() {
         }
 
         let timings = (
-            reset_radiance_kernel.dispatch([512, 512, 1]),
-            update_diff_kernel.dispatch([512, 512, 1]),
+            reset_radiance_kernel.dispatch_async([512, 512, 1]),
+            update_diff_kernel.dispatch_async([512, 512, 1]),
+            // bounce_radiance_cascades.update(0),
+            // update_radiance_kernel.dispatch_async([512, 512, 1], &0),
+            // update_diff_kernel.dispatch_async([512, 512, 1]),
+            bounce_radiance_cascades.update(0),
+            update_radiance_kernel.dispatch_async([512, 512, 1], &0),
+            update_diff_kernel.dispatch_async([512, 512, 1]),
             radiance_cascades.update(merge_variant),
-            // update_radiance_kernel.dispatch([512, 512, 1], &1),
-            // radiance_cascades.update(merge_variant),
         )
             .chain()
             .execute_timed();
