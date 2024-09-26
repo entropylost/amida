@@ -136,17 +136,19 @@ fn main() {
         }
     ));
 
-    let display_kernel = DEVICE.create_kernel::<fn()>(&track!(|| {
+    let mut display_level = 0;
+
+    let display_kernel = DEVICE.create_kernel::<fn(u32)>(&track!(|display_level| {
         let total_radiance = Vec3::splat(0.0_f32).var();
-        for i in 0_u32.expr()..cascades.base_size.facings.expr() {
+        for i in 0_u32.expr()..cascades.facing_count(display_level) {
             let ray = RayLocation::from_comps_expr(RayLocationComps {
-                probe: dispatch_id().xy(),
+                probe: dispatch_id().xy() / (1_u32 << (cascades.spatial_factor * display_level)),
                 facing: i,
-                level: 0_u32.expr(),
+                level: display_level,
             });
             *total_radiance += radiance_cascades.radiance.read(ray);
         }
-        let radiance = total_radiance / cascades.base_size.facings as f32;
+        let radiance = total_radiance / cascades.facing_count(display_level).cast_f32();
         // let transmittance = world.opacity.read(dispatch_id().xy());
         // let opacity = world.opacity.read(dispatch_id().xy());
         // let fluence = Fluence::from_comps_expr(FluenceComps {
@@ -180,7 +182,7 @@ fn main() {
         &Vec2::new(256.0, 256.0),
         &40.0,
         &Vec3::splat(0.0),
-        &Vec3::splat(0.1),
+        &Vec3::splat(f32::INFINITY),
     );
 
     draw_kernel.dispatch(
@@ -247,6 +249,9 @@ fn main() {
         if rt.just_pressed_key(KeyCode::Enter) {
             merge_variant = (merge_variant + 1) % radiance_cascades.merge_kernel_count();
         }
+        if rt.just_pressed_key(KeyCode::KeyL) {
+            display_level = (display_level + 1) % cascades.num_cascades;
+        }
 
         let timings = (
             update_diff_kernel.dispatch([512, 512, 1]),
@@ -263,6 +268,6 @@ fn main() {
             total_runtime = 0.0;
         }
 
-        scope.submit([display_kernel.dispatch_async([512, 512, 1])]);
+        scope.submit([display_kernel.dispatch_async([512, 512, 1], &display_level)]);
     });
 }

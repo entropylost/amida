@@ -28,9 +28,9 @@ impl RadianceCascades {
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
                 bilinear_fix::merge(world, settings, &radiance, level);
             })),
-            DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-                nearest::merge(world, settings, &radiance, level);
-            })),
+            // DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
+            //     nearest::merge(world, settings, &radiance, level);
+            // })),
         ];
 
         Self {
