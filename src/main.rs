@@ -59,7 +59,7 @@ fn main() {
         base_probe_spacing: 2.0,
         base_size: CascadeSize {
             probes: Vec2::new(256, 256),
-            facings: 4, // 4 normally.
+            facings: 16, // 4 normally.
         },
         num_cascades: 5,
         spatial_factor: 1,
@@ -71,7 +71,7 @@ fn main() {
         base_probe_spacing: 1.0,
         base_size: CascadeSize {
             probes: Vec2::new(512, 512),
-            facings: 1, // 4 normally.
+            facings: 4, // 4 normally.
         },
         num_cascades: 6,
         spatial_factor: 1,
@@ -199,14 +199,31 @@ fn main() {
         );
     }));
 
-    let mut merge_variant = 1;
-    let mut num_bounces = 1;
+    let mut merge_variant = 0;
+    let mut num_bounces = 0;
     let mut run_final = true;
     let mut show_diff = false;
 
     let mut t = 0;
 
     let mut total_runtime = 0.0;
+
+    #[rustfmt::skip]
+    let material_map = vec![
+        (MouseButton::Left, (Vec3::splat(0.0), Vec3::splat(1.0), Vec3::splat(f32::INFINITY))),
+        (MouseButton::Middle, (Vec3::splat(0.0), Vec3::splat(0.0), Vec3::splat(0.0))),
+        (MouseButton::Back, (Vec3::splat(0.0), Vec3::splat(0.0), Vec3::new(0.01, 0.1, 0.1))),
+        (MouseButton::Right, (Vec3::splat(15.0), Vec3::splat(0.0), Vec3::splat(0.3))),
+    ].into_iter().collect::<HashMap<_, _>>();
+
+    let draw = |pos: Vec2<f32>, r: f32, x: MouseButton| {
+        let (emiss, diff, opacity) = material_map[&x];
+        draw_kernel.dispatch(grid_dispatch, &pos, &r, &emiss, &diff, &opacity);
+    };
+
+    draw(Vec2::new(200.0, 200.0), 40.0, MouseButton::Left);
+    draw(Vec2::new(100.0, 50.0), 40.0, MouseButton::Back);
+    draw(Vec2::new(400.0, 100.0), 5.0, MouseButton::Right);
 
     app.run(|rt, scope| {
         if rt.pressed_key(KeyCode::KeyR) {
@@ -217,18 +234,10 @@ fn main() {
 
         // let pos = Vec2::new(200.0 + 100.0 * (t as f32 / 40.0).cos(), 200.0);
 
-        #[rustfmt::skip]
-        let material_map = vec![
-            (MouseButton::Left, (Vec3::splat(0.0), Vec3::splat(1.0), Vec3::splat(f32::INFINITY))),
-            (MouseButton::Middle, (Vec3::splat(0.0), Vec3::splat(0.0), Vec3::splat(0.0))),
-            (MouseButton::Back, (Vec3::splat(0.0), Vec3::splat(0.0), Vec3::new(0.01, 0.1, 0.1))),
-            (MouseButton::Right, (Vec3::splat(15.0), Vec3::splat(0.0), Vec3::splat(0.3))),
-        ].into_iter().collect::<HashMap<_, _>>();
-
-        for (button, (emiss, diff, opacity)) in material_map {
-            if rt.pressed_button(button) {
+        for button in material_map.keys() {
+            if rt.pressed_button(*button) {
                 let pos = rt.cursor_position;
-                draw_kernel.dispatch(grid_dispatch, &pos, &10.0, &emiss, &diff, &opacity);
+                draw(pos, 10.0, *button);
             }
         }
 
