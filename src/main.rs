@@ -31,8 +31,8 @@ impl World {
 }
 
 fn skylight(angle: f32) -> FVec3 {
-    let sky_color = FVec3::new(0.3, 0.7, 1.0);
-    let sun_color = FVec3::new(1.0, 1.0, 0.8) * 3.0;
+    let sky_color = FVec3::new(0.3, 0.7, 1.0) * 0.5;
+    let sun_color = FVec3::new(1.0, 0.8, 0.4) * 5.0;
     let sun_size = 0.3;
     let sun_angle = 1.0;
 

@@ -7,6 +7,7 @@ pub fn merge(
     radiance: &CascadeStorage<Radiance>,
     level: Expr<u32>,
 ) {
+    // Or [4, 8, 4]?
     set_block_size([8, 8, 2]);
     let facing = dispatch_id().z;
     let probe = dispatch_id().xy();
