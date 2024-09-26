@@ -1,7 +1,7 @@
 use std::f32::consts::TAU;
 
 use cascade::{CascadeSettings, CascadeSize, RayLocation, RayLocationComps};
-use color::{opacity_to_optical_depth, Fluence, FluenceComps, OpticalDepth, Radiance};
+use color::{OpticalDepth, Radiance};
 use glam::Vec3 as FVec3;
 use luisa::lang::types::vector::{Vec2, Vec3};
 use radiance::RadianceCascades;
@@ -17,7 +17,7 @@ mod utils;
 struct World {
     size: [u32; 2],
     radiance: Tex2d<Radiance>,
-    optical_depth: Tex2d<OpticalDepth>,
+    opacity: Tex2d<OpticalDepth>,
     diff: Tex2d<bool>,
     environment: Buffer<Radiance>,
 }
@@ -84,15 +84,15 @@ fn main() {
     let world = World {
         size: grid_size,
         radiance: DEVICE.create_tex2d(PixelStorage::Float4, grid_size[0], grid_size[1], 1),
-        optical_depth: DEVICE.create_tex2d(PixelStorage::Float4, grid_size[0], grid_size[1], 1),
+        opacity: DEVICE.create_tex2d(PixelStorage::Float4, grid_size[0], grid_size[1], 1),
         diff: DEVICE.create_tex2d(PixelStorage::Byte1, grid_size[0], grid_size[1], 1),
         environment: DEVICE.create_buffer_from_fn(env_facings as usize, |i| {
             let angle = TAU - i as f32 / env_facings as f32 * TAU;
             Vec3::from(skylight(angle))
         }),
     };
-    let background =
-        DEVICE.create_tex2d::<Vec3<f32>>(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
+    // let background =
+    //     DEVICE.create_tex2d::<Vec3<f32>>(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
 
     let radiance_cascades = RadianceCascades::new(cascades, &world);
 
@@ -100,7 +100,7 @@ fn main() {
         let pos = dispatch_id().xy();
         let diff = false.var();
         let radiance = world.radiance.read(pos);
-        let depth = world.optical_depth.read(pos);
+        let depth = world.opacity.read(pos);
         for i in 0_u32.expr()..4_u32.expr() {
             let offset = [
                 Vec2::new(1, 0),
@@ -112,7 +112,7 @@ fn main() {
             let neighbor = pos.cast_i32() + offset;
             if (neighbor >= 0).all() && (neighbor < Vec2::from(grid_size).expr().cast_i32()).all() {
                 let neighbor_radiance = world.radiance.read(neighbor.cast_u32());
-                let neighbor_depth = world.optical_depth.read(neighbor.cast_u32());
+                let neighbor_depth = world.opacity.read(neighbor.cast_u32());
                 if (neighbor_radiance != radiance).any() || (neighbor_depth != depth).any() {
                     *diff = true;
                     break;
@@ -131,7 +131,7 @@ fn main() {
         |pos, radius, color, depth| {
             if (dispatch_id().xy().cast_f32() - pos).length() < radius {
                 world.radiance.write(dispatch_id().xy(), color);
-                world.optical_depth.write(dispatch_id().xy(), depth);
+                world.opacity.write(dispatch_id().xy(), depth);
             }
         }
     ));
@@ -147,13 +147,14 @@ fn main() {
             *total_radiance += radiance_cascades.radiance.read(ray);
         }
         let radiance = total_radiance / cascades.base_size.facings as f32;
-        let transmittance = world.optical_depth.read(dispatch_id().xy());
-        let fluence = Fluence::from_comps_expr(FluenceComps {
-            radiance,
-            transmittance,
-        });
-        let has_nan = fluence.radiance.is_nan().any();
-        let background_color = background.read(dispatch_id().xy()).xyz();
+        // let transmittance = world.opacity.read(dispatch_id().xy());
+        // let opacity = world.opacity.read(dispatch_id().xy());
+        // let fluence = Fluence::from_comps_expr(FluenceComps {
+        //     radiance,
+        //     transmittance: 1.0 - opacity,
+        // });
+        // let base_color = world.radiance.read(dispatch_id().xy());
+        // let background_color = background.read(dispatch_id().xy());
         /*
                    color * opacity
                + radiance * (1.0 - opacity)
@@ -162,30 +163,24 @@ fn main() {
         */
         app.display().write(
             dispatch_id().xy(),
-            if has_nan {
-                Vec3::expr(1.0, 0.0, 0.0)
-            } else {
-                fluence.over_color(background_color)
-                    + Vec3::splat_expr(
-                        world.diff.read(dispatch_id().xy()).cast_u32().cast_f32() * 10.0,
-                    )
-            },
+            // base_color * opacity
+            radiance, // + world.diff.read(dispatch_id().xy()).cast_u32().cast_f32() * 0.1,
         );
     }));
 
-    let mut merge_variant = 0;
+    let mut merge_variant = 1;
 
     let mut t = 0;
 
     // copy_kernel.dispatch([512, 512, 1], &Vec3::splat(1.0), &background);
-    copy_kernel.dispatch([512, 512, 1], &Vec3::splat(1.0), &world.optical_depth);
+    copy_kernel.dispatch([512, 512, 1], &Vec3::splat(0.0), &world.opacity);
 
     draw_kernel.dispatch(
         [512, 512, 1],
         &Vec2::new(256.0, 256.0),
         &40.0,
         &Vec3::splat(0.0),
-        &Vec3::splat(0.0),
+        &Vec3::splat(0.1),
     );
 
     draw_kernel.dispatch(
@@ -193,7 +188,7 @@ fn main() {
         &Vec2::new(400.0, 256.0),
         &10.0,
         &Vec3::splat(10.0),
-        &Vec3::splat(0.0),
+        &Vec3::splat(0.3),
     );
 
     draw_kernel.dispatch(
@@ -201,10 +196,12 @@ fn main() {
         &Vec2::new(200.0, 100.0),
         &40.0,
         &Vec3::splat(0.0),
-        &opacity_to_optical_depth(Vec3::new(0.01, 0.1, 0.1)),
+        &Vec3::new(0.01, 0.1, 0.1),
     );
 
     update_diff_kernel.dispatch([512, 512, 1]);
+
+    let mut total_runtime = 0.0;
 
     app.run(|rt, scope| {
         if rt.pressed_key(KeyCode::KeyR) {
@@ -251,16 +248,20 @@ fn main() {
             merge_variant = (merge_variant + 1) % radiance_cascades.merge_kernel_count();
         }
 
-        // if rt.just_pressed_key(KeyCode::Space) {
         let timings = (
             update_diff_kernel.dispatch([512, 512, 1]),
             radiance_cascades.update(merge_variant),
         )
             .chain()
             .execute_timed();
-        // println!("{:?}", timings);
-        println!("Total: {:?}", timings.iter().map(|(_, t)| t).sum::<f32>());
-        // }
+        if rt.just_pressed_key(KeyCode::Space) {
+            println!("{:?}", timings);
+        }
+        total_runtime += timings.iter().map(|(_, t)| t).sum::<f32>();
+        if t % 100 == 0 {
+            println!("Total runtime: {}", total_runtime / 100.0);
+            total_runtime = 0.0;
+        }
 
         scope.submit([display_kernel.dispatch_async([512, 512, 1])]);
     });

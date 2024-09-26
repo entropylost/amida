@@ -66,13 +66,9 @@ pub fn trace_radiance(
         if world.diff.read(pos.cast_u32()) || next_t >= interval_size {
             let segment_size = luisa::min(next_t, interval_size) - last_t;
             let radiance = world.radiance.read(pos.cast_u32());
-            let optical_depth = world.optical_depth.read(pos.cast_u32());
+            let opacity = world.opacity.read(pos.cast_u32());
             *fluence = fluence.over(
-                Color::from_comps_expr(ColorComps {
-                    radiance,
-                    optical_depth,
-                })
-                .as_fluence(segment_size),
+                Color::from_comps_expr(ColorComps { radiance, opacity }).as_fluence(segment_size),
             );
 
             *last_t = next_t;

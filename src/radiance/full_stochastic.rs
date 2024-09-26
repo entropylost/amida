@@ -7,7 +7,7 @@ pub fn merge(
     radiance: &CascadeStorage<Radiance>,
     level: Expr<u32>,
 ) {
-    set_block_size([1, 1, 32]);
+    set_block_size([8, 4, 1]);
     let facing = dispatch_id().z;
     let probe = dispatch_id().xy();
     let ray = RayLocation::from_comps_expr(RayLocationComps {

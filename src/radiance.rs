@@ -5,6 +5,7 @@ use utils::pcg3df;
 
 mod bilinear_fix;
 mod full_stochastic;
+mod nearest;
 mod single_stochastic;
 
 pub struct RadianceCascades {
@@ -26,6 +27,9 @@ impl RadianceCascades {
             })),
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
                 bilinear_fix::merge(world, settings, &radiance, level);
+            })),
+            DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
+                nearest::merge(world, settings, &radiance, level);
             })),
         ];
 

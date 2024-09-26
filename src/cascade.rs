@@ -116,8 +116,8 @@ impl<T: Value> CascadeStorage<T> {
         let linear_index = ray.probe.x + ray.probe.y * self.settings.probe_count(ray.level).x;
         // Other way seems to run slightly slower.
         ray.level * cascade_total_size
-            + linear_index * self.settings.facing_count(ray.level)
-            + ray.facing
+            + linear_index // * self.settings.facing_count(ray.level)
+            + ray.facing * self.settings.probe_count(ray.level).reduce_prod()
     }
     #[tracked]
     pub fn read(&self, ray: Expr<RayLocation>) -> Expr<T> {

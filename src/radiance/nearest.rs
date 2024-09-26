@@ -25,8 +25,7 @@ pub fn merge(
     let next_level = level + 1;
     let samples = settings.bilinear_samples(probe, next_level);
 
-    let rand = pcg3df(dispatch_id() + Vec3::expr(0, 0, level << 16));
-    let next_probe = samples.base_index + (rand.xy() < samples.fract).cast_u32();
+    let next_probe = samples.base_index + samples.fract.round().cast_u32();
     let next_probe_pos = settings.probe_location(next_probe, next_level);
     let ray_start = probe_pos + ray_dir * interval.x;
     let ray_end = next_probe_pos + ray_dir * interval.y;
