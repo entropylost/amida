@@ -4,7 +4,7 @@ use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CascadeSettings {
-    pub base_interval_size: f32,
+    pub base_interval: (f32, f32),
     pub base_probe_spacing: f32,
     pub base_size: CascadeSize,
     pub num_cascades: u32,
@@ -35,13 +35,13 @@ impl CascadeSettings {
     }
     #[tracked]
     pub fn interval_end(&self, level: Expr<u32>) -> Expr<f32> {
-        self.base_interval_size * (1_u32 << (self.angular_factor * level)).cast_f32()
+        self.base_interval.1 * (1_u32 << (self.angular_factor * level)).cast_f32()
     }
     #[tracked]
     pub fn interval(&self, level: Expr<u32>) -> Expr<Interval> {
         Vec2::expr(
             if level == 0 {
-                0.0_f32.expr()
+                self.base_interval.0.expr()
             } else {
                 self.interval_end(level - 1)
             },
