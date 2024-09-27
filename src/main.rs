@@ -265,6 +265,7 @@ fn main() {
     draw(Vec2::new(400.0, 100.0), 5.0, MouseButton::Right);
 
     app.run(|rt, scope| {
+        drop(scope);
         if rt.pressed_key(KeyCode::KeyX) {
             rt.begin_recording(None, false);
         }
@@ -339,6 +340,9 @@ fn main() {
                 )
                     .chain()
             }),
+            display_kernel
+                .dispatch_async(grid_dispatch, &show_diff)
+                .debug("Display"),
         )
             .chain()
             .execute_timed();
@@ -371,7 +375,5 @@ fn main() {
             println!("  Total: {}ms", total_runtime.iter().sum::<f32>() / 100.0);
             total_runtime.fill(0.0);
         }
-
-        scope.submit([display_kernel.dispatch_async(grid_dispatch, &show_diff)]);
     });
 }
