@@ -1,9 +1,10 @@
-use std::{collections::HashMap, f32::consts::TAU};
+use std::{collections::HashMap, f32::consts::TAU, path::Path};
 
 use cascade::{CascadeSettings, CascadeSize, RayLocation, RayLocationComps};
 use color::{Diffuse, Opacity, Radiance};
 use glam::Vec3 as FVec3;
-use luisa::lang::types::vector::{Vec2, Vec3};
+use image::{ImageBuffer, Rgb, Rgb32FImage};
+use luisa::lang::types::vector::{Vec2, Vec3, Vec4};
 use radiance::RadianceCascades;
 use sefirot::prelude::*;
 use sefirot_testbed::{App, KeyCode, MouseButton};
@@ -23,6 +24,61 @@ struct World {
     display_diffuse: Tex2d<Diffuse>,
     display_opacity: Tex2d<Opacity>,
     environment: Buffer<Radiance>,
+}
+
+impl World {
+    fn width(&self) -> u32 {
+        self.size[0]
+    }
+    fn height(&self) -> u32 {
+        self.size[1]
+    }
+    fn save(&self, path: impl AsRef<Path> + Copy) {
+        std::fs::create_dir(path).unwrap();
+        let staging_buffer =
+            DEVICE.create_buffer::<f32>(3 * (self.width() * self.height()) as usize);
+        let staging_kernel = DEVICE.create_kernel::<fn(Tex2d<Radiance>)>(&track!(|texture| {
+            let index = dispatch_id().x + dispatch_id().y * self.width();
+            let value = texture.read(dispatch_id().xy());
+            staging_buffer.write(index, value.x);
+            staging_buffer.write(index + 1, value.y);
+            staging_buffer.write(index + 2, value.z);
+        }));
+
+        let mut staging_host = vec![0.0_f32; 3 * (self.width() * self.height()) as usize];
+
+        let mut save = |name: &str, texture: &Tex2d<Radiance>| {
+            (
+                staging_kernel.dispatch_async([self.width(), self.height(), 1], texture),
+                staging_buffer.copy_to_async(&mut staging_host),
+            )
+                .execute();
+            let image =
+                ImageBuffer::<Rgb<f32>, _>::from_raw(self.width(), self.height(), &*staging_host)
+                    .unwrap();
+            image
+                .save(path.as_ref().join(name).with_extension("avif"))
+                .unwrap();
+        };
+        save("emissive", &self.emissive);
+        save("diffuse", &self.diffuse);
+        save("opacity", &self.opacity);
+        save("display_emissive", &self.display_emissive);
+        save("display_diffuse", &self.display_diffuse);
+        save("display_opacity", &self.display_opacity);
+
+        let env = self
+            .environment
+            .copy_to_vec()
+            .into_iter()
+            .flat_map(<[f32; 3]>::from)
+            .collect::<Vec<_>>();
+        let width = 1 << (env.len().trailing_zeros() / 2);
+        let image = Rgb32FImage::from_raw(width, env.len() as u32 / width, env).unwrap();
+        image
+            .save(path.as_ref().join("environment").with_extension("avif"))
+            .unwrap();
+    }
 }
 
 struct TraceWorld {
@@ -266,21 +322,20 @@ fn main() {
 
     app.run(|rt, scope| {
         drop(scope);
-        if rt.pressed_key(KeyCode::KeyX) {
-            rt.begin_recording(None, false);
-        }
 
         t += 1;
 
-        // let pos = Vec2::new(200.0 + 100.0 * (t as f32 / 40.0).cos(), 200.0);
+        for button in material_map.keys() {
+            if rt.pressed_button(*button) {
+                let pos = rt.cursor_position;
+                draw(pos, 10.0, *button);
+            }
+        }
 
-        // for button in material_map.keys() {
-        //     if rt.pressed_button(*button) {
-        //         let pos = rt.cursor_position;
-        //         draw(pos, 10.0, *button);
-        //     }
-        // }
-
+        if rt.pressed_key(KeyCode::KeyX) {
+            println!("Recording");
+            rt.begin_recording(None, false);
+        }
         if rt.just_pressed_key(KeyCode::Enter) {
             merge_variant = (merge_variant + 1) % radiance_cascades.merge_kernel_count();
         }
@@ -305,6 +360,19 @@ fn main() {
             raw_radiance = !raw_radiance;
             println!("Raw radiance: {}", raw_radiance);
         }
+        if rt.just_pressed_key(KeyCode::KeyE) {
+            world.environment.copy_from(
+                &(0..env_facings)
+                    .map(|i| {
+                        let angle = TAU - i as f32 / env_facings as f32 * TAU;
+                        Vec3::from(skylight(angle))
+                    })
+                    .collect::<Vec<_>>(),
+            );
+        }
+        if rt.just_pressed_key(KeyCode::KeyS) {
+            world.save("world");
+        }
 
         let timings = (
             world
@@ -312,7 +380,7 @@ fn main() {
                 .view(0)
                 .copy_to_texture_async(&radiance.view(0)),
             update_bounce_environment_kernel
-                .dispatch_async(grid_dispatch)
+                .dispatch_async([bounce_env_facings, 1, 1])
                 .debug("Update environment map"),
             (0..num_bounces)
                 .map(|_i| {
