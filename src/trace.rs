@@ -25,7 +25,7 @@ fn aabb_intersect(
 
 #[tracked]
 pub fn trace_radiance(
-    world: &World,
+    world: &TraceWorld,
     ray_start: Expr<Vec2<f32>>,
     ray_dir: Expr<Vec2<f32>>,
     interval: Expr<Interval>,
@@ -63,7 +63,7 @@ pub fn trace_radiance(
     for _i in 0_u32.expr()..1000_u32.expr() {
         let next_t = side_dist.reduce_min();
 
-        if world.diff.read(pos.cast_u32()) || next_t >= interval_size {
+        if world.difference.read(pos.cast_u32()) || next_t >= interval_size {
             let segment_size = luisa::min(next_t, interval_size) - last_t;
             let radiance = world.radiance.read(pos.cast_u32());
             let opacity = world.opacity.read(pos.cast_u32());

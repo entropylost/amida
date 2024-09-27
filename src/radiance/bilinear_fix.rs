@@ -2,7 +2,7 @@ use super::*;
 
 #[tracked]
 pub fn merge(
-    world: &World,
+    world: &TraceWorld,
     settings: CascadeSettings,
     radiance: &CascadeStorage<Radiance>,
     level: Expr<u32>,

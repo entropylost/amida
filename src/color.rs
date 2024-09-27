@@ -1,5 +1,6 @@
 use super::*;
 
+pub type Diffuse = Vec3<f32>;
 pub type Radiance = Vec3<f32>;
 pub type OpticalDepth = Vec3<f32>;
 pub type Transmittance = Vec3<f32>;

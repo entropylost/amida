@@ -15,7 +15,7 @@ pub struct RadianceCascades {
 }
 
 impl RadianceCascades {
-    pub fn new(settings: CascadeSettings, world: &World) -> Self {
+    pub fn new(settings: CascadeSettings, world: &TraceWorld) -> Self {
         let radiance = CascadeStorage::new(settings);
 
         let merge_kernels = vec![
