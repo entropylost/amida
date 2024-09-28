@@ -37,6 +37,8 @@ struct World {
     display_opacity: Tex2d<Opacity>,
 }
 
+const PAGENAME: Tag = Tag::Unknown(285);
+
 impl World {
     fn new(width: u32, height: u32) -> Self {
         Self {
@@ -72,10 +74,7 @@ impl World {
         let mut file = TiffDecoder::new(file).unwrap();
 
         let mut load = |name: &str, texture: &Tex2d<Radiance>| {
-            assert_eq!(
-                &file.get_tag_ascii_string(Tag::ImageDescription).unwrap(),
-                name
-            );
+            assert_eq!(&file.get_tag_ascii_string(PAGENAME).unwrap(), name);
             assert_eq!(file.colortype().unwrap(), ColorType::RGB(32));
             assert_eq!(file.dimensions().unwrap(), (self.width(), self.height()));
             let image = file.read_image().unwrap();
@@ -127,8 +126,8 @@ impl World {
                 .new_image::<colortype::RGB32Float>(self.width(), self.height())
                 .unwrap();
             image
-                .encoder()
-                .write_tag(Tag::ImageDescription, name)
+                .encoder() // PageName
+                .write_tag(PAGENAME, name)
                 .unwrap();
             image.write_data(&staging_host).unwrap();
         };
