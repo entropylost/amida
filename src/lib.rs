@@ -206,7 +206,7 @@ pub fn main() {
 
     let app = App::new("Thelema Render", grid_size)
         .scale(4)
-        .dpi_override(2.0)
+        // .dpi_override(2.0)
         .agx()
         .init();
 
