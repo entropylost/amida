@@ -1,3 +1,3 @@
 fn main() {
-    thelema_render::main();
+    amida::main();
 }

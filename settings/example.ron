@@ -1,0 +1,10 @@
+(
+    world_size: [512, 512],
+    pixel_size: 4,
+    dpi: 2.0,
+    mouse_materials: {
+        Left, (
+            emissive: (0.0, 0.0, 0.0),
+        )
+    }
+)

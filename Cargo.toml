@@ -1,11 +1,14 @@
 [package]
-name = "thelema_render"
-version = "0.1.0"
+name = "amida"
+version = "1.0.0"
 edition = "2021"
-default-run = "thelema_render"
+default-run = "amida"
 
 [dependencies]
-glam = "0.27.0"
+glam = { version = "0.27.0", features = ["serde"] }
+ron = "0.8.1"
 sefirot = { path = "../sefirot/sefirot", features = ["glam"] }
 sefirot_testbed = { path = "../sefirot/testbed" }
+serde = "1.0.210"
 tiff = "0.9.1"
+winit = { version = "0.29.15", features = ["serde"] }

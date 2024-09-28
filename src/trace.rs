@@ -3,6 +3,22 @@ use color::*;
 
 pub type Interval = Vec2<f32>;
 
+pub struct TraceWorld {
+    pub size: [u32; 2],
+    pub radiance: Tex2dView<Radiance>,
+    pub opacity: Tex2dView<Opacity>,
+    pub difference: Tex2dView<bool>,
+    pub environment: BufferView<Radiance>,
+}
+impl TraceWorld {
+    pub fn width(&self) -> u32 {
+        self.size[0]
+    }
+    pub fn height(&self) -> u32 {
+        self.size[1]
+    }
+}
+
 const TRANSMITTANCE_CUTOFF: f32 = 0.001;
 
 fn intersect_intervals(a: Expr<Interval>, b: Expr<Interval>) -> Expr<Interval> {

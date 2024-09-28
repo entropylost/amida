@@ -2,7 +2,7 @@ use trace::Interval;
 
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct CascadeSettings {
     pub base_interval: (f32, f32),
     pub base_probe_spacing: f32,
@@ -94,10 +94,24 @@ impl CascadeSettings {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Value)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Value, Serialize, Deserialize)]
 pub struct CascadeSize {
+    #[serde(with = "to_glam")]
     pub probes: Vec2<u32>,
     pub facings: u32,
+}
+
+mod to_glam {
+    use crate::Vec2;
+    use glam::UVec2;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    pub fn serialize<S: Serializer>(a: &Vec2<u32>, s: S) -> Result<S::Ok, S::Error> {
+        UVec2::new(a.x, a.y).serialize(s)
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec2<u32>, D::Error> {
+        let UVec2 { x, y } = UVec2::deserialize(d)?;
+        Ok(Vec2::new(x, y))
+    }
 }
 
 pub struct CascadeStorage<T: Value> {

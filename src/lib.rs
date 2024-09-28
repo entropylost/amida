@@ -9,137 +9,29 @@ use std::{
 
 use cascade::{CascadeSettings, CascadeSize, RayLocation, RayLocationComps};
 use color::{Diffuse, Opacity, Radiance};
+use data::{Material, Settings};
 use glam::Vec3 as FVec3;
 use luisa::lang::types::vector::{Vec2, Vec3};
 use radiance::RadianceCascades;
 use sefirot::prelude::*;
 use sefirot_testbed::{App, KeyCode, MouseButton};
+use serde::{Deserialize, Serialize};
 use tiff::{
     decoder::{Decoder as TiffDecoder, DecodingResult},
     encoder::{colortype, TiffEncoder},
     tags::Tag,
     ColorType,
 };
+use trace::TraceWorld;
+use world::World;
 
 mod cascade;
 mod color;
+mod data;
 mod radiance;
 mod trace;
 mod utils;
-
-struct World {
-    size: [u32; 2],
-    emissive: Tex2d<Radiance>,
-    diffuse: Tex2d<Diffuse>,
-    opacity: Tex2d<Opacity>,
-    display_emissive: Tex2d<Radiance>,
-    display_diffuse: Tex2d<Diffuse>,
-    display_opacity: Tex2d<Opacity>,
-}
-
-const PAGENAME: Tag = Tag::Unknown(285);
-
-impl World {
-    fn new(width: u32, height: u32) -> Self {
-        Self {
-            size: [width, height],
-            emissive: DEVICE.create_tex2d(PixelStorage::Float4, width, height, 1),
-            diffuse: DEVICE.create_tex2d(PixelStorage::Float4, width, height, 1),
-            opacity: DEVICE.create_tex2d(PixelStorage::Float4, width, height, 1),
-            display_emissive: DEVICE.create_tex2d(PixelStorage::Float4, width, height, 1),
-            display_diffuse: DEVICE.create_tex2d(PixelStorage::Float4, width, height, 1),
-            display_opacity: DEVICE.create_tex2d(PixelStorage::Float4, width, height, 1),
-        }
-    }
-    fn width(&self) -> u32 {
-        self.size[0]
-    }
-    fn height(&self) -> u32 {
-        self.size[1]
-    }
-    fn load(&self, path: impl AsRef<Path> + Copy) {
-        let staging_buffer =
-            DEVICE.create_buffer::<f32>(3 * (self.width() * self.height()) as usize);
-        let staging_kernel = DEVICE.create_kernel::<fn(Tex2d<Radiance>)>(&track!(|texture| {
-            let index = 3 * (dispatch_id().x + dispatch_id().y * self.width());
-            let value = Vec3::expr(
-                staging_buffer.read(index),
-                staging_buffer.read(index + 1),
-                staging_buffer.read(index + 2),
-            );
-            texture.write(dispatch_id().xy(), value);
-        }));
-
-        let file = File::open(path.as_ref().with_extension("tiff")).unwrap();
-        let mut file = TiffDecoder::new(file).unwrap();
-
-        let mut load = |name: &str, texture: &Tex2d<Radiance>| {
-            assert_eq!(&file.get_tag_ascii_string(PAGENAME).unwrap(), name);
-            assert_eq!(file.colortype().unwrap(), ColorType::RGB(32));
-            assert_eq!(file.dimensions().unwrap(), (self.width(), self.height()));
-            let image = file.read_image().unwrap();
-            let DecodingResult::F32(image) = image else {
-                unreachable!()
-            };
-            (
-                staging_buffer.copy_from_async(&image),
-                staging_kernel.dispatch_async([self.width(), self.height(), 1], texture),
-            )
-                .chain()
-                .execute();
-            if file.more_images() {
-                file.next_image().unwrap();
-            }
-        };
-        // Generally viewed in reverse.
-        load("display_opacity", &self.display_opacity);
-        load("display_diffuse", &self.display_diffuse);
-        load("display_emissive", &self.display_emissive);
-        load("opacity", &self.opacity);
-        load("diffuse", &self.diffuse);
-        load("emissive", &self.emissive);
-    }
-    fn save(&self, path: impl AsRef<Path> + Copy) {
-        let staging_buffer =
-            DEVICE.create_buffer::<f32>(3 * (self.width() * self.height()) as usize);
-        let staging_kernel = DEVICE.create_kernel::<fn(Tex2d<Radiance>)>(&track!(|texture| {
-            let index = 3 * (dispatch_id().x + dispatch_id().y * self.width());
-            let value = texture.read(dispatch_id().xy());
-            staging_buffer.write(index, value.x);
-            staging_buffer.write(index + 1, value.y);
-            staging_buffer.write(index + 2, value.z);
-        }));
-
-        let mut staging_host = vec![0.0_f32; 3 * (self.width() * self.height()) as usize];
-
-        let file = File::create(path.as_ref()).unwrap();
-        let mut file = TiffEncoder::new(file).unwrap();
-
-        let mut save = |name: &str, texture: &Tex2d<Radiance>| {
-            (
-                staging_kernel.dispatch_async([self.width(), self.height(), 1], texture),
-                staging_buffer.copy_to_async(&mut staging_host),
-            )
-                .chain()
-                .execute();
-            let mut image = file
-                .new_image::<colortype::RGB32Float>(self.width(), self.height())
-                .unwrap();
-            image
-                .encoder() // PageName
-                .write_tag(PAGENAME, name)
-                .unwrap();
-            image.write_data(&staging_host).unwrap();
-        };
-        // Generally viewed in reverse.
-        save("display_opacity", &self.display_opacity);
-        save("display_diffuse", &self.display_diffuse);
-        save("display_emissive", &self.display_emissive);
-        save("opacity", &self.opacity);
-        save("diffuse", &self.diffuse);
-        save("emissive", &self.emissive);
-    }
-}
+mod world;
 
 pub fn load_env(path: impl AsRef<Path> + Copy) -> Vec<FVec3> {
     let file = File::open(path.as_ref().with_extension("tiff")).unwrap();
@@ -184,55 +76,34 @@ pub fn save_env(env: &[FVec3], path: impl AsRef<Path> + Copy) {
         .unwrap();
 }
 
-struct TraceWorld {
-    size: [u32; 2],
-    radiance: Tex2dView<Radiance>,
-    opacity: Tex2dView<Opacity>,
-    difference: Tex2dView<bool>,
-    environment: BufferView<Radiance>,
-}
-impl TraceWorld {
-    fn width(&self) -> u32 {
-        self.size[0]
-    }
-    fn height(&self) -> u32 {
-        self.size[1]
-    }
-}
-
 pub fn main() {
-    let grid_size = [512, 512];
-    let grid_dispatch = [512, 512, 1];
+    let env_file_name = std::env::args()
+        .nth(2)
+        .unwrap_or_else(|| "env/default.tiff".to_string());
+    let world_file_name = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "world/default.tiff".to_string());
+    let settings_file_name = std::env::args()
+        .nth(3)
+        .unwrap_or_else(|| "settings/default.ron".to_string());
 
-    let app = App::new("Thelema Render", grid_size)
-        .scale(4)
-        // .dpi_override(2.0)
+    let settings: Settings = File::open(settings_file_name)
+        .ok()
+        .map(ron::de::from_reader)
+        .map(Result::unwrap)
+        .unwrap_or_default();
+
+    let grid_size = settings.world_size;
+    let grid_dispatch = [grid_size[0], grid_size[1], 1];
+
+    let cascades = settings.cascades;
+    let bounce_cascades = settings.bounce_cascades;
+
+    let app = App::new("Amida", grid_size)
+        .scale(settings.pixel_size)
+        .dpi_override(settings.dpi)
         .agx()
         .init();
-
-    let bounce_cascades = CascadeSettings {
-        base_interval: (1.5, 6.0),
-        base_probe_spacing: 2.0,
-        base_size: CascadeSize {
-            probes: Vec2::new(256, 256),
-            facings: 16, // 4 normally.
-        },
-        num_cascades: 5,
-        spatial_factor: 1,
-        angular_factor: 2,
-    };
-
-    let cascades = CascadeSettings {
-        base_interval: (0.0, 1.0),
-        base_probe_spacing: 1.0,
-        base_size: CascadeSize {
-            probes: Vec2::new(512, 512),
-            facings: 4, // 4 normally.
-        },
-        num_cascades: 6,
-        spatial_factor: 1,
-        angular_factor: 2,
-    };
 
     let world = World::new(grid_size[0], grid_size[1]);
     let environment =
@@ -242,6 +113,15 @@ pub fn main() {
             .level_size(bounce_cascades.num_cascades)
             .facings as usize,
     );
+
+    if std::fs::exists(&env_file_name).unwrap_or(false) {
+        let data = load_env(&env_file_name);
+        downsample_env(&data, &environment);
+        downsample_env(&data, &bounce_environment);
+    }
+    if std::fs::exists(&world_file_name).unwrap_or(false) {
+        world.load(&world_file_name);
+    }
 
     let radiance =
         DEVICE.create_tex2d::<Radiance>(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
@@ -337,8 +217,6 @@ pub fn main() {
         difference.write(pos, **diff);
     }));
 
-    let mut display_level = 0;
-
     let display_kernel = DEVICE.create_kernel::<fn(bool)>(&track!(|show_diff| {
         app.display().write(
             dispatch_id().xy(),
@@ -351,92 +229,71 @@ pub fn main() {
         );
     }));
 
-    let mut merge_variant = 0;
-    let mut num_bounces = 0;
-    let mut run_final = true;
-    let mut show_diff = false;
-    let mut raw_radiance = true;
+    let mut merge_variant = settings.merge_variant;
+    let mut num_bounces = settings.num_bounces;
+    let mut run_final = settings.run_final;
+    let mut show_diff = settings.show_diff;
+    let mut raw_radiance = settings.raw_radiance;
+    let mut display_level = settings.display_level;
+    let mut brush_radius = settings.brush_radius;
 
     let mut t = 0;
 
     let mut total_runtime = 0.0;
 
-    let draw_kernel = DEVICE.create_kernel::<fn(Vec2<f32>, f32, Vec3<f32>, Vec3<f32>, Vec3<f32>)>(
-        &track!(|pos, radius, emiss, diff, opacity| {
+    #[rustfmt::skip]
+    let draw_kernel = DEVICE.create_kernel::<fn(Vec2<f32>, f32, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>)>(
+        &track!(|pos, radius, emissive, diffuse, opacity, display_emissive, display_diffuse, display_opacity| {
             if (dispatch_id().xy().cast_f32() - pos).length() < radius {
-                world.emissive.write(dispatch_id().xy(), emiss);
-                world.diffuse.write(dispatch_id().xy(), diff);
+                world.emissive.write(dispatch_id().xy(), emissive);
+                world.diffuse.write(dispatch_id().xy(), diffuse);
                 world.opacity.write(dispatch_id().xy(), opacity);
-                world.display_opacity.write(dispatch_id().xy(), opacity);
+                world.display_emissive.write(dispatch_id().xy(), display_emissive);
+                world.display_diffuse.write(dispatch_id().xy(), display_diffuse);
+                world.display_opacity.write(dispatch_id().xy(), display_opacity);
             }
         }),
     );
 
     #[rustfmt::skip]
-    let material_map = vec![
-        (MouseButton::Left, (Vec3::splat(0.0), Vec3::splat(1.0), Vec3::splat(1000.0))),
-        (MouseButton::Middle, (Vec3::splat(0.0), Vec3::splat(0.0), Vec3::splat(0.0))),
-        (MouseButton::Back, (Vec3::splat(0.0), Vec3::splat(0.0), Vec3::new(0.01, 0.1, 0.1))),
-        (MouseButton::Right, (Vec3::splat(15.0), Vec3::splat(0.0), Vec3::splat(0.3))),
-    ].into_iter().collect::<HashMap<_, _>>();
-
-    let draw = |pos: Vec2<f32>, r: f32, x: MouseButton| {
-        let (emiss, diff, opacity) = material_map[&x];
-        draw_kernel.dispatch(grid_dispatch, &pos, &r, &emiss, &diff, &opacity);
+    let draw = |pos: Vec2<f32>, r: f32, m: &Material| {
+        draw_kernel.dispatch(
+            grid_dispatch,
+            &pos,
+            &r,
+            &Vec3::from(m.emissive), &Vec3::from(m.diffuse), &Vec3::from(m.opacity),
+            &Vec3::from(m.display_emissive), &Vec3::from(m.display_diffuse), &Vec3::from(m.display_opacity),
+        );
     };
-
-    let env_file_name = std::env::args()
-        .nth(2)
-        .unwrap_or_else(|| "env/default.tiff".to_string());
-    let world_file_name = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "world/default.tiff".to_string());
-
-    if std::fs::exists(&env_file_name).unwrap_or(false) {
-        let data = load_env(&env_file_name);
-        downsample_env(&data, &environment);
-        downsample_env(&data, &bounce_environment);
-    }
-    if std::fs::exists(&world_file_name).unwrap_or(false) {
-        world.load(&world_file_name);
-    }
 
     app.run(|rt, scope| {
         drop(scope);
 
         t += 1;
 
-        for button in material_map.keys() {
-            if rt.pressed_button(*button) {
-                let pos = rt.cursor_position;
-                draw(pos, 10.0, *button);
-            }
+        if rt.mouse_scroll != Vec2::splat(0.0) {
+            brush_radius = (brush_radius + rt.mouse_scroll.y).max(1.0);
+            println!("Brush radius: {}", brush_radius);
         }
-
         if rt.just_pressed_key(KeyCode::Enter) {
             merge_variant = (merge_variant + 1) % radiance_cascades.merge_kernel_count();
-        }
-        if rt.just_pressed_key(KeyCode::KeyL) {
+            println!("Merge variant: {}", merge_variant);
+        } else if rt.just_pressed_key(KeyCode::KeyL) {
             display_level = (display_level + 1) % cascades.num_cascades;
             println!("Display level: {}", display_level);
-        }
-        if rt.just_pressed_key(KeyCode::KeyB) {
+        } else if rt.just_pressed_key(KeyCode::KeyB) {
             num_bounces = (num_bounces + 1) % 4;
-            println!("Num bounces: {}", num_bounces);
-        }
-        if rt.just_pressed_key(KeyCode::KeyF) {
+            println!("Bounces: {}", num_bounces);
+        } else if rt.just_pressed_key(KeyCode::KeyF) {
             run_final = !run_final;
-            println!("Run final: {}", run_final);
-        }
-        if rt.just_pressed_key(KeyCode::KeyD) {
+            println!("Display final bounce: {}", run_final);
+        } else if rt.just_pressed_key(KeyCode::KeyD) {
             show_diff = !show_diff;
-            println!("Show diff: {}", show_diff);
-        }
-        if rt.just_pressed_key(KeyCode::KeyR) {
+            println!("Show difference map: {}", show_diff);
+        } else if rt.just_pressed_key(KeyCode::KeyR) {
             raw_radiance = !raw_radiance;
-            println!("Raw radiance: {}", raw_radiance);
-        }
-        if rt.just_pressed_key(KeyCode::KeyS) {
+            println!("Display raw radiance: {}", raw_radiance);
+        } else if rt.just_pressed_key(KeyCode::KeyS) {
             let mut path = PathBuf::from(&world_file_name);
             if !rt.pressed_key(KeyCode::ControlLeft) {
                 let ext = path.extension().unwrap_or_default();
@@ -454,11 +311,23 @@ pub fn main() {
                 path.set_file_name(file_name);
             }
             world.save(&path);
-            println!("Saved");
-        }
-        if rt.just_pressed_key(KeyCode::KeyL) {
+            println!("Saved to {:?}", path);
+        } else if rt.just_pressed_key(KeyCode::KeyL) {
             world.load(&world_file_name);
             println!("Loaded");
+        } else {
+            for (key, material) in &settings.key_materials {
+                if rt.pressed_key(*key) {
+                    let pos = rt.cursor_position;
+                    draw(pos, brush_radius, material);
+                }
+            }
+        }
+        for (button, material) in &settings.mouse_materials {
+            if rt.pressed_button(*button) {
+                let pos = rt.cursor_position;
+                draw(pos, brush_radius, material);
+            }
         }
 
         let before_time = std::time::Instant::now();
