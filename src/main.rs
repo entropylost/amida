@@ -34,6 +34,7 @@ impl World {
         self.size[1]
     }
     fn save(&self, path: impl AsRef<Path> + Copy) {
+        std::fs::remove_dir_all(path).unwrap();
         std::fs::create_dir(path).unwrap();
         let staging_buffer =
             DEVICE.create_buffer::<f32>(3 * (self.width() * self.height()) as usize);
@@ -57,7 +58,7 @@ impl World {
                 ImageBuffer::<Rgb<f32>, _>::from_raw(self.width(), self.height(), &*staging_host)
                     .unwrap();
             image
-                .save(path.as_ref().join(name).with_extension("avif"))
+                .save(path.as_ref().join(name).with_extension("exr"))
                 .unwrap();
         };
         save("emissive", &self.emissive);
@@ -73,10 +74,11 @@ impl World {
             .into_iter()
             .flat_map(<[f32; 3]>::from)
             .collect::<Vec<_>>();
-        let width = 1 << (env.len().trailing_zeros() / 2);
-        let image = Rgb32FImage::from_raw(width, env.len() as u32 / width, env).unwrap();
+        let width = 1 << (self.environment.len().trailing_zeros() / 2);
+        let image =
+            Rgb32FImage::from_raw(width, self.environment.len() as u32 / width, env).unwrap();
         image
-            .save(path.as_ref().join("environment").with_extension("avif"))
+            .save(path.as_ref().join("environment").with_extension("exr"))
             .unwrap();
     }
 }

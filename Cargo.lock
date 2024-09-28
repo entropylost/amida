@@ -2294,6 +2294,7 @@ dependencies = [
  "image",
  "sefirot",
  "sefirot_testbed",
+ "tiff",
 ]
 
 [[package]]
