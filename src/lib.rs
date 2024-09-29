@@ -287,7 +287,7 @@ pub fn main() {
         if rt.just_pressed_key(KeyCode::Enter) {
             merge_variant = (merge_variant + 1) % radiance_cascades.merge_kernel_count();
             println!("Merge variant: {}", merge_variant);
-        } else if rt.just_pressed_key(KeyCode::KeyL) {
+        } else if rt.just_pressed_key(KeyCode::KeyE) {
             display_level = (display_level + 1) % cascades.num_cascades;
             println!("Display level: {}", display_level);
         } else if rt.just_pressed_key(KeyCode::KeyB) {

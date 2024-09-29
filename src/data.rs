@@ -56,10 +56,10 @@ impl Default for Settings {
             #[rustfmt::skip]
             mouse_materials: [
                 (MouseButton::Left, Material::new(FVec3::splat(0.0), FVec3::splat(1.0), FVec3::splat(1000.0))),
+                (MouseButton::Middle, Material::new(FVec3::splat(5.0), FVec3::splat(0.0), FVec3::splat(0.3))),
                 (MouseButton::Right, Material::new(FVec3::splat(0.0), FVec3::splat(0.0), FVec3::splat(0.0))),
                 (MouseButton::Back, Material::new(FVec3::splat(0.0), FVec3::splat(0.0), FVec3::new(0.1, 0.1, 0.01))),
                 (MouseButton::Forward, Material::new(FVec3::splat(0.0), FVec3::splat(0.0), FVec3::new(0.01, 0.1, 0.1))),
-                (MouseButton::Middle, Material::new(FVec3::splat(5.0), FVec3::splat(0.0), FVec3::splat(0.3))),
             ].into_iter().collect(),
             key_materials: [].into_iter().collect(),
         }
@@ -67,6 +67,7 @@ impl Default for Settings {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Material {
     pub emissive: FVec3,
     pub diffuse: FVec3,
@@ -80,10 +81,10 @@ impl Default for Material {
         Self {
             emissive: FVec3::splat(0.0),
             diffuse: FVec3::splat(1.0),
-            opacity: FVec3::splat(1000.0),
+            opacity: FVec3::splat(0.0),
             display_emissive: FVec3::splat(0.0),
             display_diffuse: FVec3::splat(1.0),
-            display_opacity: FVec3::splat(1000.0),
+            display_opacity: FVec3::splat(0.0),
         }
     }
 }
