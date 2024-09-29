@@ -239,7 +239,10 @@ pub fn main() {
 
     let mut t = 0;
 
+    #[cfg(not(feature = "trace"))]
     let mut total_runtime = 0.0;
+    #[cfg(feature = "trace")]
+    let mut total_runtime = vec![0.0; num_bounces + 1];
 
     #[rustfmt::skip]
     let draw_kernel = DEVICE.create_kernel::<fn(Vec2<f32>, f32, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>)>(
@@ -271,6 +274,12 @@ pub fn main() {
 
         t += 1;
 
+        #[cfg(feature = "record")]
+        if rt.pressed_key(KeyCode::KeyX) {
+            println!("Recording");
+            rt.begin_recording(None, false);
+        }
+
         if rt.mouse_scroll != Vec2::splat(0.0) {
             brush_radius = (brush_radius + rt.mouse_scroll.y).max(1.0);
             println!("Brush radius: {}", brush_radius);
@@ -283,6 +292,10 @@ pub fn main() {
             println!("Display level: {}", display_level);
         } else if rt.just_pressed_key(KeyCode::KeyB) {
             num_bounces = (num_bounces + 1) % 4;
+            #[cfg(feature = "trace")]
+            {
+                total_runtime = vec![0.0; num_bounces + 1];
+            }
             println!("Bounces: {}", num_bounces);
         } else if rt.just_pressed_key(KeyCode::KeyF) {
             run_final = !run_final;
@@ -330,9 +343,7 @@ pub fn main() {
             }
         }
 
-        let before_time = std::time::Instant::now();
-
-        (
+        let commands = (
             world
                 .emissive
                 .view(0)
@@ -367,12 +378,49 @@ pub fn main() {
                 .dispatch_async(grid_dispatch, &show_diff)
                 .debug("Display"),
         )
-            .chain()
-            .execute();
-        total_runtime += before_time.elapsed().as_secs_f32() * 1000.0;
-        if t % 100 == 0 {
-            println!("Frame time: {:?}ms", total_runtime / 100.0);
-            total_runtime = 0.0;
+            .chain();
+        #[cfg(not(feature = "trace"))]
+        {
+            let start = std::time::Instant::now();
+            commands.execute();
+            total_runtime += start.elapsed().as_secs_f32() * 1000.0;
+            if t % 100 == 0 {
+                println!("Frame time: {:?}ms", total_runtime / 100.0);
+                total_runtime = 0.0;
+            }
+        }
+        #[cfg(feature = "trace")]
+        {
+            let timings = commands.execute_timed();
+            if rt.just_pressed_key(KeyCode::Space) {
+                println!("{:?}", timings);
+            }
+            {
+                let mut index = 0;
+                let mut last_merge = false;
+                for (name, value) in timings.iter() {
+                    if name.starts_with("merge") {
+                        total_runtime[index] += *value;
+                        last_merge = true;
+                    } else {
+                        if last_merge {
+                            index += 1;
+                        }
+                        last_merge = false;
+                    }
+                }
+            }
+            if t % 100 == 0 {
+                println!("Runtime:");
+                if num_bounces > 0 {
+                    for (i, time) in total_runtime.iter().enumerate().take(num_bounces) {
+                        println!("  Bounce {}: {}ms", i, time / 100.0);
+                    }
+                }
+                println!("  Display: {}ms", total_runtime[num_bounces] / 100.0);
+                println!("  Total: {}ms", total_runtime.iter().sum::<f32>() / 100.0);
+                total_runtime.fill(0.0);
+            }
         }
     });
 }
