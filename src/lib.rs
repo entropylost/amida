@@ -22,7 +22,7 @@ use tiff::{
     tags::Tag,
     ColorType,
 };
-use trace::TraceWorld;
+use trace::{Block, BlockType, TraceWorld};
 use world::World;
 
 mod cascade;
@@ -125,8 +125,12 @@ pub fn main() {
 
     let radiance =
         DEVICE.create_tex2d::<Radiance>(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
-    let difference =
-        DEVICE.create_tex2d::<bool>(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
+    let difference = DEVICE.create_tex2d::<bool>(
+        BlockType::STORAGE_FORMAT,
+        grid_size[0] / BlockType::SIZE,
+        grid_size[1] / BlockType::SIZE,
+        1,
+    );
 
     let bounce_radiance_cascades = RadianceCascades::new(
         bounce_cascades,
@@ -190,31 +194,41 @@ pub fn main() {
     }));
 
     let update_diff_kernel = DEVICE.create_kernel::<fn(Tex2d<Opacity>)>(&track!(|opacity| {
-        let pos = dispatch_id().xy();
-        let diff = false.var();
-        let this_radiance = radiance.read(pos);
-        let this_depth = opacity.read(pos);
-        for i in 0_u32.expr()..4_u32.expr() {
-            let offset = [
-                Vec2::new(1, 0),
-                Vec2::new(-1, 0),
-                Vec2::new(0, 1),
-                Vec2::new(0, -1),
-            ]
-            .expr()[i];
-            let neighbor = pos.cast_i32() + offset;
-            if (neighbor >= 0).all() && (neighbor < Vec2::from(grid_size).expr().cast_i32()).all() {
-                let neighbor_radiance = radiance.read(neighbor.cast_u32());
-                let neighbor_opacity = opacity.read(neighbor.cast_u32());
-                if (neighbor_radiance != this_radiance).any()
-                    || (neighbor_opacity != this_depth).any()
-                {
-                    *diff = true;
-                    break;
+        let block = BlockType::empty().var();
+        for dx in 0..BlockType::SIZE {
+            for dy in 0..BlockType::SIZE {
+                let pos = dispatch_id().xy() * BlockType::SIZE + Vec2::expr(dx, dy);
+                let diff = false.var();
+                let this_radiance = radiance.read(pos);
+                let this_opacity = opacity.read(pos);
+                for i in 0_u32..4_u32 {
+                    let offset = [
+                        Vec2::new(1, 0),
+                        Vec2::new(-1, 0),
+                        Vec2::new(0, 1),
+                        Vec2::new(0, -1),
+                    ]
+                    .expr()[i];
+                    let neighbor = pos.cast_i32() + offset;
+                    if (neighbor >= 0).all()
+                        && (neighbor < Vec2::from(grid_size).expr().cast_i32()).all()
+                    {
+                        let neighbor_radiance = radiance.read(neighbor.cast_u32());
+                        let neighbor_opacity = opacity.read(neighbor.cast_u32());
+                        if (neighbor_radiance != this_radiance).any()
+                            || (neighbor_opacity != this_opacity).any()
+                        {
+                            *diff = true;
+                            break;
+                        }
+                    }
+                }
+                if diff {
+                    BlockType::set(block, Vec2::expr(dx, dy));
                 }
             }
         }
-        difference.write(pos, **diff);
+        BlockType::write(&difference.view(0), dispatch_id().xy(), **block);
     }));
 
     let display_kernel = DEVICE.create_kernel::<fn(bool)>(&track!(|show_diff| {
@@ -352,7 +366,14 @@ pub fn main() {
                 .map(|_i| {
                     (
                         update_diff_kernel
-                            .dispatch_async(grid_dispatch, &world.opacity)
+                            .dispatch_async(
+                                [
+                                    grid_size[0] / BlockType::SIZE,
+                                    grid_size[1] / BlockType::SIZE,
+                                    1,
+                                ],
+                                &world.opacity,
+                            )
                             .debug("Update diff"),
                         bounce_radiance_cascades.update(0),
                         update_radiance_kernel
