@@ -131,6 +131,12 @@ pub fn main() {
         grid_size[1] / BlockType::SIZE,
         1,
     );
+    let difference_nonempty = DEVICE.create_tex2d::<bool>(
+        PixelStorage::Byte1,
+        grid_size[0] / BlockType::SIZE,
+        grid_size[1] / BlockType::SIZE,
+        1,
+    );
 
     let bounce_radiance_cascades = RadianceCascades::new(
         bounce_cascades,
@@ -138,8 +144,9 @@ pub fn main() {
             size: grid_size,
             radiance: radiance.view(0),
             opacity: world.opacity.view(0),
-            difference: difference.view(0),
             environment: bounce_environment.view(..),
+            difference: difference.view(0),
+            nonempty_blocks: difference_nonempty.view(0),
         },
     );
     let radiance_cascades = RadianceCascades::new(
@@ -148,8 +155,9 @@ pub fn main() {
             size: grid_size,
             radiance: radiance.view(0),
             opacity: world.display_opacity.view(0),
-            difference: difference.view(0),
             environment: environment.view(..),
+            difference: difference.view(0),
+            nonempty_blocks: difference_nonempty.view(0),
         },
     );
 
@@ -228,6 +236,7 @@ pub fn main() {
                 }
             }
         }
+        difference_nonempty.write(dispatch_id().xy(), !BlockType::is_empty(**block));
         BlockType::write(&difference.view(0), dispatch_id().xy(), **block);
     }));
 

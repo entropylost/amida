@@ -21,7 +21,7 @@ impl RadianceCascades {
         let merge_kernels = vec![
             DEVICE.create_kernel_with_options::<fn(u32)>(
                 KernelBuildOptions {
-                    name: Some("merge_single_stochastic3".to_string()),
+                    name: None,
                     ..Default::default()
                 },
                 &track!(|level| {
