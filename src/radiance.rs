@@ -19,9 +19,15 @@ impl RadianceCascades {
         let radiance = CascadeStorage::new(settings);
 
         let merge_kernels = vec![
-            DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-                single_stochastic::merge(world, settings, &radiance, level);
-            })),
+            DEVICE.create_kernel_with_options::<fn(u32)>(
+                KernelBuildOptions {
+                    name: Some("merge_single_stochastic3".to_string()),
+                    ..Default::default()
+                },
+                &track!(|level| {
+                    single_stochastic::merge(world, settings, &radiance, level);
+                }),
+            ),
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
                 full_stochastic::merge(world, settings, &radiance, level);
             })),

@@ -236,13 +236,13 @@ pub fn main() {
             dispatch_id().xy(),
             radiance.read(dispatch_id().xy())
                 + if show_diff {
-                    BlockType::get(
-                        BlockType::read(&difference.view(0), dispatch_id().xy() / BlockType::SIZE),
-                        dispatch_id().xy() % BlockType::SIZE,
-                    )
-                    .cast_u32()
-                    .cast_f32()
+                    let block =
+                        BlockType::read(&difference.view(0), dispatch_id().xy() / BlockType::SIZE);
+                    BlockType::get(block, dispatch_id().xy() % BlockType::SIZE)
+                        .cast_u32()
+                        .cast_f32()
                         * 5.0
+                        + (!BlockType::is_empty(block)).cast_u32().cast_f32() * 1.0
                 } else {
                     0.0_f32.expr()
                 },
