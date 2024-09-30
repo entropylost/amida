@@ -146,17 +146,23 @@ fn aabb_intersect(
 }
 
 #[tracked]
+#[cfg(any(feature = "block16", feature = "block64"))]
 pub fn trace_radiance(
     world: &TraceWorld,
     ray_start: Expr<Vec2<f32>>,
     ray_dir: Expr<Vec2<f32>>,
     interval: Expr<Interval>,
 ) -> Expr<Fluence> {
-    if cfg!(any(feature = "block16", feature = "block64")) {
-        trace_radiance_block(world, ray_start, ray_dir, interval)
-    } else {
-        trace_radiance_single(world, ray_start, ray_dir, interval)
-    }
+    trace_radiance_block(world, ray_start, ray_dir, interval)
+}
+#[cfg(not(any(feature = "block16", feature = "block64")))]
+pub fn trace_radiance(
+    world: &TraceWorld,
+    ray_start: Expr<Vec2<f32>>,
+    ray_dir: Expr<Vec2<f32>>,
+    interval: Expr<Interval>,
+) -> Expr<Fluence> {
+    trace_radiance_single(world, ray_start, ray_dir, interval)
 }
 
 #[tracked]
@@ -236,7 +242,7 @@ fn trace_radiance_block<B: Block>(
 
         let next_t = side_dist.reduce_min();
 
-        if B::get(**block, pos.cast_u32() % 4) || next_t >= interval_size {
+        if B::get(**block, pos.cast_u32() % B::SIZE) || next_t >= interval_size {
             let segment_size = luisa::min(next_t, interval_size) - last_t;
             let radiance = world.radiance.read(pos.cast_u32());
             let opacity = world.opacity.read(pos.cast_u32());

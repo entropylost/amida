@@ -125,7 +125,7 @@ pub fn main() {
 
     let radiance =
         DEVICE.create_tex2d::<Radiance>(PixelStorage::Float4, grid_size[0], grid_size[1], 1);
-    let difference = DEVICE.create_tex2d::<bool>(
+    let difference = DEVICE.create_tex2d::<<BlockType as Block>::Storage>(
         BlockType::STORAGE_FORMAT,
         grid_size[0] / BlockType::SIZE,
         grid_size[1] / BlockType::SIZE,
@@ -236,7 +236,13 @@ pub fn main() {
             dispatch_id().xy(),
             radiance.read(dispatch_id().xy())
                 + if show_diff {
-                    difference.read(dispatch_id().xy()).cast_u32().cast_f32() * 5.0
+                    BlockType::get(
+                        BlockType::read(&difference.view(0), dispatch_id().xy() / BlockType::SIZE),
+                        dispatch_id().xy() % BlockType::SIZE,
+                    )
+                    .cast_u32()
+                    .cast_f32()
+                        * 5.0
                 } else {
                     0.0_f32.expr()
                 },

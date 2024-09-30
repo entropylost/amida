@@ -1,6 +1,6 @@
+use amida::save_env;
 use glam::Vec3 as FVec3;
 use std::f32::consts::TAU;
-use amida::save_env;
 
 fn skylight(angle: f32) -> FVec3 {
     let sky_color = FVec3::new(0.3, 0.7, 1.0);
