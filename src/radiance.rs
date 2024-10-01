@@ -19,24 +19,27 @@ impl RadianceCascades {
         let radiance = CascadeStorage::new(settings);
 
         let merge_kernels = vec![
-            DEVICE.create_kernel_with_options::<fn(u32)>(
-                KernelBuildOptions {
-                    name: None,
-                    ..Default::default()
-                },
-                &track!(|level| {
-                    single_stochastic::merge(world, settings, &radiance, level);
-                }),
-            ),
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-                full_stochastic::merge(world, settings, &radiance, level);
+                set_block_size([4, 8, 4]);
+                single_stochastic::merge(world, settings, &radiance, level);
             })),
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-                bilinear_fix::merge(world, settings, &radiance, level);
+                set_block_size([4, 2, 16]);
+                single_stochastic::merge(world, settings, &radiance, level);
             })),
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-                nearest::merge(world, settings, &radiance, level);
+                set_block_size([2, 2, 32]);
+                single_stochastic::merge(world, settings, &radiance, level);
             })),
+            //             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
+            //                 full_stochastic::merge(world, settings, &radiance, level);
+            //             })),
+            //             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
+            //                 bilinear_fix::merge(world, settings, &radiance, level);
+            //             })),
+            //             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
+            //                 nearest::merge(world, settings, &radiance, level);
+            //             })),
         ];
 
         Self {
@@ -48,12 +51,12 @@ impl RadianceCascades {
     pub fn merge_kernel_count(&self) -> usize {
         self.merge_kernels.len()
     }
-    pub fn update(&self, variant: usize) -> impl AsNodes {
+    pub fn update(&self, _variant: usize) -> impl AsNodes {
         let mut commands = vec![];
         for level in (0..self.settings.num_cascades).rev() {
             let level_size = self.settings.level_size(level);
             commands.push(
-                self.merge_kernels[variant]
+                self.merge_kernels[(level / 2) as usize]
                     .dispatch_async(
                         [level_size.probes.x, level_size.probes.y, level_size.facings],
                         &level,
