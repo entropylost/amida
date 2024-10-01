@@ -294,7 +294,7 @@ fn trace_radiance_multilevel_while<B: Block>(
                 // lc_assert!(a);
                 // This bugfix is necessary due to floating point issues.
                 if (pos / B::SIZE != block_pos).any() {
-                    *fluence = Fluence::black();
+                    // *fluence = Fluence::black();
                     *finished = true;
                 }
                 *side_dist = (ray_dir.signum() * (pos.cast_f32() - ray_start)

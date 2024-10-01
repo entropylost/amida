@@ -1,4 +1,7 @@
-use luisa::lang::{functions::thread_id, types::shared::Shared};
+use luisa::lang::{
+    functions::{sync_block, thread_id},
+    types::shared::Shared,
+};
 
 use super::*;
 
@@ -61,8 +64,8 @@ pub fn merge(
         ray_fluence.over_color(next_radiance),
     );
 
-    // Unnecessary since each warp includes 4 facings.
-    // sync_block();
+    // Should be unnecessary since each warp includes 4 facings.
+    sync_block();
 
     if facing % settings.branches() == 0 {
         let total_radiance = (0..settings.branches())
