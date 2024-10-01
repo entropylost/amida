@@ -237,6 +237,10 @@ fn trace_radiance_multilevel_while<B: Block>(
             *pos += mask.select(ray_step, Vec2::splat_expr(0));
         }
 
+        if finished {
+            break;
+        }
+
         let block_pos = (pos / B::SIZE).var();
         let block_side_dist = (ray_dir.signum()
             * (block_pos.cast_f32() - ray_start / B::SIZE as f32)
@@ -246,18 +250,9 @@ fn trace_radiance_multilevel_while<B: Block>(
         let block_side_dist = block_side_dist.var();
 
         let next_t = block_side_dist.reduce_min().var();
+
         for _i in 0_u32.expr()..1000_u32.expr() {
-            let mask = block_side_dist <= block_side_dist.yx();
-
-            *block_side_dist += mask.select(block_delta_dist, Vec2::splat_expr(0.0));
-            *block_pos += mask.select(ray_step, Vec2::splat_expr(0));
-
-            let last_t = **next_t;
-            *next_t = block_side_dist.reduce_min();
-
-            let ne = world.nonempty_blocks.read(block_pos);
-
-            if !ne && next_t >= interval_size {
+            if next_t >= interval_size {
                 let segment_size = interval_size - last_t;
                 let radiance = world.radiance.read(pos);
                 let opacity = world.opacity.read(pos);
@@ -270,11 +265,25 @@ fn trace_radiance_multilevel_while<B: Block>(
                 break;
             }
 
-            if ne || next_t >= interval_size {
+            let mask = block_side_dist <= block_side_dist.yx();
+
+            *block_side_dist += mask.select(block_delta_dist, Vec2::splat_expr(0.0));
+            *block_pos += mask.select(ray_step, Vec2::splat_expr(0));
+
+            let last_t = **next_t;
+            *next_t = block_side_dist.reduce_min();
+
+            if world.nonempty_blocks.read(block_pos) {
                 *pos = mask.select(
                     block_pos * B::SIZE + block_offset,
                     (last_t * ray_dir + ray_start).floor().cast_u32(),
                 );
+                // let a = (pos / B::SIZE == block_pos).all();
+                // lc_assert!(a);
+                // This bugfix is necessary due to floating point issues.
+                if (pos / B::SIZE != block_pos).any() {
+                    *finished = true;
+                }
                 *side_dist = (ray_dir.signum() * (pos.cast_f32() - ray_start)
                     + ray_dir.signum() * 0.5
                     + 0.5)
@@ -441,7 +450,7 @@ fn trace_radiance_multilevel_if<B: Block>(
 
     for _i in 0_u32.expr()..1000_u32.expr() {
         if B::is_empty(**block) || (pos / B::SIZE != block_pos).any() {
-            let last_t = block_side_dist.reduce_min();
+            let t = block_side_dist.reduce_min();
             let mask = block_side_dist <= block_side_dist.yx();
 
             *block_side_dist += mask.select(block_delta_dist, Vec2::splat_expr(0.0));
@@ -451,15 +460,25 @@ fn trace_radiance_multilevel_if<B: Block>(
 
             let next_t = block_side_dist.reduce_min();
 
-            if !B::is_empty(**block) || next_t >= interval_size {
+            if !B::is_empty(**block) {
                 *pos = mask.select(
                     block_pos * B::SIZE + block_offset,
-                    (last_t * ray_dir + ray_start).floor().cast_u32(),
+                    (t * ray_dir + ray_start).floor().cast_u32(),
                 );
                 *side_dist = (ray_dir.signum() * (pos.cast_f32() - ray_start)
                     + ray_dir.signum() * 0.5
                     + 0.5)
                     * delta_dist;
+            } else if next_t >= interval_size {
+                let pos = block_pos * B::SIZE;
+                let segment_size = interval_size - last_t;
+                let radiance = world.radiance.read(pos);
+                let opacity = world.opacity.read(pos);
+                *fluence = fluence.over(
+                    Color::from_comps_expr(ColorComps { radiance, opacity })
+                        .as_fluence(segment_size),
+                );
+                break;
             } else {
                 continue;
             }
