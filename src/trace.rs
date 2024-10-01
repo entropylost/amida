@@ -114,8 +114,8 @@ pub struct TraceWorld<B: Block = BlockType> {
     pub radiance: Tex2dView<Radiance>,
     pub opacity: Tex2dView<Opacity>,
     pub environment: BufferView<Radiance>,
-    pub difference: Tex2dView<B::Storage>,
-    pub nonempty_blocks: Tex2dView<bool>,
+    pub diff: Tex2dView<B::Storage>,
+    pub diff_blocks: Tex2dView<bool>,
 }
 impl<B: Block> TraceWorld<B> {
     pub fn width(&self) -> u32 {
@@ -156,6 +156,7 @@ pub fn trace_radiance(
     trace_radiance_multilevel_while(world, ray_start, ray_dir, interval)
 }
 
+#[allow(unused)]
 #[tracked]
 fn trace_radiance_multilevel_while<B: Block>(
     world: &TraceWorld<B>,
@@ -202,7 +203,7 @@ fn trace_radiance_multilevel_while<B: Block>(
         for _i in 0_u32.expr()..1000_u32.expr() {
             let next_t = side_dist.reduce_min();
 
-            let block = B::read(&world.difference, pos / B::SIZE);
+            let block = B::read(&world.diff, pos / B::SIZE);
 
             if B::is_empty(block) {
                 break;
@@ -273,7 +274,7 @@ fn trace_radiance_multilevel_while<B: Block>(
             let last_t = **next_t;
             *next_t = block_side_dist.reduce_min();
 
-            if world.nonempty_blocks.read(block_pos) {
+            if world.diff_blocks.read(block_pos) {
                 *pos = mask.select(
                     block_pos * B::SIZE + block_offset,
                     (last_t * ray_dir + ray_start).floor().cast_u32(),
@@ -296,6 +297,7 @@ fn trace_radiance_multilevel_while<B: Block>(
     **fluence
 }
 
+#[allow(unused)]
 #[tracked]
 fn trace_radiance_multilevel_single<B: Block>(
     world: &TraceWorld<B>,
@@ -339,7 +341,7 @@ fn trace_radiance_multilevel_single<B: Block>(
 
     let interval_size = interval.y - interval.x;
 
-    if !world.nonempty_blocks.read(block_pos) && block_side_dist.reduce_min() < interval_size {
+    if !world.diff_blocks.read(block_pos) && block_side_dist.reduce_min() < interval_size {
         let next_t = block_side_dist.reduce_min().var();
         for _i in 0_u32.expr()..1000_u32.expr() {
             let mask = block_side_dist <= block_side_dist.yx();
@@ -350,7 +352,7 @@ fn trace_radiance_multilevel_single<B: Block>(
             let last_t = **next_t;
             *next_t = block_side_dist.reduce_min();
 
-            if world.nonempty_blocks.read(block_pos) || next_t >= interval_size {
+            if world.diff_blocks.read(block_pos) || next_t >= interval_size {
                 *pos = mask.select(
                     block_pos * B::SIZE + block_offset,
                     (last_t * ray_dir + ray_start).floor().cast_u32(),
@@ -370,9 +372,7 @@ fn trace_radiance_multilevel_single<B: Block>(
     for _i in 0_u32.expr()..1000_u32.expr() {
         let next_t = side_dist.reduce_min();
 
-        if B::get(B::read(&world.difference, pos / B::SIZE), pos % B::SIZE)
-            || next_t >= interval_size
-        {
+        if B::get(B::read(&world.diff, pos / B::SIZE), pos % B::SIZE) || next_t >= interval_size {
             let segment_size = luisa::min(next_t, interval_size) - last_t;
             let radiance = world.radiance.read(pos);
             let opacity = world.opacity.read(pos);
@@ -400,6 +400,7 @@ fn trace_radiance_multilevel_single<B: Block>(
     **fluence
 }
 
+#[allow(unused)]
 #[tracked]
 fn trace_radiance_multilevel_if<B: Block>(
     world: &TraceWorld<B>,
@@ -440,7 +441,7 @@ fn trace_radiance_multilevel_if<B: Block>(
 
     let block_offset = (ray_dir > 0.0).select(Vec2::splat_expr(0), Vec2::splat_expr(B::SIZE - 1));
 
-    let block = B::read(&world.difference, **block_pos).var();
+    let block = B::read(&world.diff, **block_pos).var();
 
     let interval_size = interval.y - interval.x;
 
@@ -456,7 +457,7 @@ fn trace_radiance_multilevel_if<B: Block>(
             *block_side_dist += mask.select(block_delta_dist, Vec2::splat_expr(0.0));
             *block_pos += mask.select(ray_step, Vec2::splat_expr(0));
 
-            *block = B::read(&world.difference, **block_pos);
+            *block = B::read(&world.diff, **block_pos);
 
             let next_t = block_side_dist.reduce_min();
 
@@ -513,6 +514,7 @@ fn trace_radiance_multilevel_if<B: Block>(
     **fluence
 }
 
+#[allow(unused)]
 #[tracked]
 fn trace_radiance_block_load<B: Block>(
     world: &TraceWorld<B>,
@@ -545,7 +547,7 @@ fn trace_radiance_block_load<B: Block>(
             * delta_dist;
     let side_dist = side_dist.var();
 
-    let block = B::read(&world.difference, **block_pos).var();
+    let block = B::read(&world.diff, **block_pos).var();
 
     let interval_size = interval.y - interval.x;
 
@@ -557,7 +559,7 @@ fn trace_radiance_block_load<B: Block>(
         let pred = pos / B::SIZE;
         if (pred != block_pos).any() {
             *block_pos = pred;
-            *block = B::read(&world.difference, **block_pos);
+            *block = B::read(&world.diff, **block_pos);
         }
 
         let next_t = side_dist.reduce_min();
@@ -591,6 +593,7 @@ fn trace_radiance_block_load<B: Block>(
     **fluence
 }
 
+#[allow(unused)]
 #[tracked]
 fn trace_radiance_simple<B: Block>(
     world: &TraceWorld<B>,
@@ -631,9 +634,7 @@ fn trace_radiance_simple<B: Block>(
     for _i in 0_u32.expr()..1000_u32.expr() {
         let next_t = side_dist.reduce_min();
 
-        if B::get(B::read(&world.difference, pos / B::SIZE), pos % B::SIZE)
-            || next_t >= interval_size
-        {
+        if B::get(B::read(&world.diff, pos / B::SIZE), pos % B::SIZE) || next_t >= interval_size {
             let segment_size = luisa::min(next_t, interval_size) - last_t;
             let radiance = world.radiance.read(pos);
             let opacity = world.opacity.read(pos);
