@@ -153,7 +153,7 @@ pub fn trace_radiance(
     ray_dir: Expr<Vec2<f32>>,
     interval: Expr<Interval>,
 ) -> Expr<Fluence> {
-    trace_radiance_null(world, ray_start, ray_dir, interval)
+    trace_radiance_multilevel_while(world, ray_start, ray_dir, interval)
 }
 
 #[allow(unused)]

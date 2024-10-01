@@ -107,7 +107,7 @@ pub fn main() {
 
     let world = World::new(grid_size[0], grid_size[1]);
     let environment =
-        DEVICE.create_buffer(cascades.level_size(cascades.num_cascades).facings as usize);
+        DEVICE.create_buffer(cascades.level_size(cascades.num_cascades).facings as usize / 4);
     let bounce_environment = DEVICE.create_buffer(
         bounce_cascades
             .level_size(bounce_cascades.num_cascades)
@@ -179,16 +179,12 @@ pub fn main() {
         radiance.write(dispatch_id().xy(), avg_radiance * diffuse + emissive);
     }));
     let finish_radiance_kernel = DEVICE.create_kernel::<fn(u32, bool)>(&track!(|level, raw| {
-        let total_radiance = Vec3::splat(0.0_f32).var();
-        for i in 0_u32.expr()..cascades.facing_count(level) {
-            let ray = RayLocation::from_comps_expr(RayLocationComps {
-                probe: dispatch_id().xy() / cascades.probe_spacing(level).cast_u32(),
-                facing: i,
-                level,
-            });
-            *total_radiance += radiance_cascades.radiance.read(ray);
-        }
-        let avg_radiance = total_radiance / cascades.facing_count(level).cast_f32();
+        let ray = RayLocation::from_comps_expr(RayLocationComps {
+            probe: dispatch_id().xy() / cascades.probe_spacing(level).cast_u32(),
+            facing: 0_u32.expr(),
+            level,
+        });
+        let avg_radiance = radiance_cascades.radiance.read(ray);
         radiance.write(
             dispatch_id().xy(),
             if raw {
