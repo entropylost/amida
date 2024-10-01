@@ -162,16 +162,18 @@ pub fn main() {
     );
 
     let update_radiance_kernel = DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
+        let storage_cascades = bounce_radiance_cascades.radiance.settings();
+
         let total_radiance = Vec3::splat(0.0_f32).var();
-        for i in 0_u32.expr()..bounce_cascades.facing_count(level) {
+        for i in 0_u32.expr()..storage_cascades.facing_count(level) {
             let ray = RayLocation::from_comps_expr(RayLocationComps {
-                probe: dispatch_id().xy() / bounce_cascades.probe_spacing(level).cast_u32(),
+                probe: dispatch_id().xy() / storage_cascades.probe_spacing(level).cast_u32(),
                 facing: i,
                 level,
             });
             *total_radiance += bounce_radiance_cascades.radiance.read(ray);
         }
-        let avg_radiance = total_radiance / bounce_cascades.facing_count(level).cast_f32();
+        let avg_radiance = total_radiance / storage_cascades.facing_count(level).cast_f32();
 
         let emissive = world.emissive.read(dispatch_id().xy());
         let diffuse = world.diffuse.read(dispatch_id().xy());
@@ -179,12 +181,18 @@ pub fn main() {
         radiance.write(dispatch_id().xy(), avg_radiance * diffuse + emissive);
     }));
     let finish_radiance_kernel = DEVICE.create_kernel::<fn(u32, bool)>(&track!(|level, raw| {
-        let ray = RayLocation::from_comps_expr(RayLocationComps {
-            probe: dispatch_id().xy() / cascades.probe_spacing(level).cast_u32(),
-            facing: 0_u32.expr(),
-            level,
-        });
-        let avg_radiance = radiance_cascades.radiance.read(ray);
+        let storage_cascades = radiance_cascades.radiance.settings();
+
+        let total_radiance = Vec3::splat(0.0_f32).var();
+        for i in 0_u32.expr()..storage_cascades.facing_count(level) {
+            let ray = RayLocation::from_comps_expr(RayLocationComps {
+                probe: dispatch_id().xy() / storage_cascades.probe_spacing(level).cast_u32(),
+                facing: i,
+                level,
+            });
+            *total_radiance += radiance_cascades.radiance.read(ray);
+        }
+        let avg_radiance = total_radiance / storage_cascades.facing_count(level).cast_f32();
         radiance.write(
             dispatch_id().xy(),
             if raw {

@@ -1,7 +1,4 @@
-use luisa::lang::{
-    functions::{sync_block, thread_id},
-    types::shared::Shared,
-};
+use luisa::lang::{functions::thread_id, types::shared::Shared};
 
 use super::*;
 
@@ -67,17 +64,16 @@ pub fn merge(
     // Unnecessary since each warp includes 4 facings.
     // sync_block();
 
-    if facing % 4 == 0 {
-        let total_radiance = Radiance::splat(0.0_f32).var();
-        #[allow(unused_parens)]
-        for i in (0_u32..4_u32) {
-            *total_radiance += radiance_shared.read(thread_id().x + i + probe_offset);
-        }
-        let avg_radiance = total_radiance / 4.0;
+    if facing % settings.branches() == 0 {
+        let total_radiance = (0..settings.branches())
+            .map(|i| radiance_shared.read(thread_id().x + i + probe_offset))
+            .reduce(AddExpr::add)
+            .unwrap();
+        let avg_radiance = total_radiance / settings.branches() as f32;
         radiance.write(
             RayLocation::from_comps_expr(RayLocationComps {
                 probe,
-                facing: facing / 4,
+                facing: facing / settings.branches(),
                 level,
             }),
             avg_radiance,

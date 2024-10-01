@@ -60,6 +60,12 @@ impl Fluence {
             transmittance: Transmittance::splat(1.0),
         }
     }
+    pub fn black() -> Self {
+        Self {
+            radiance: Radiance::splat(0.0),
+            transmittance: Transmittance::splat(0.0),
+        }
+    }
 }
 
 impl FluenceExpr {

@@ -119,6 +119,9 @@ pub struct CascadeStorage<T: Value> {
     buffer: Buffer<T>,
 }
 impl<T: Value> CascadeStorage<T> {
+    pub fn settings(&self) -> &CascadeSettings {
+        &self.settings
+    }
     pub fn new(settings: CascadeSettings) -> Self {
         let buffer =
             DEVICE.create_buffer((settings.cascade_total_size() * settings.num_cascades) as usize);
