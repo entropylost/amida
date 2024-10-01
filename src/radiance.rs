@@ -66,11 +66,7 @@ impl RadianceCascades {
             commands.push(
                 self.merge_kernels[(level / 2) as usize]
                     .dispatch_async(
-                        [
-                            level_size.probes.x,
-                            level_size.probes.y,
-                            level_size.facings / 4,
-                        ],
+                        [level_size.probes.x, level_size.probes.y, level_size.facings],
                         &level,
                     )
                     .debug(format!("merge level {}", level)),
