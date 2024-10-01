@@ -32,11 +32,11 @@ impl RadianceCascades {
                 single_stochastic_preaverage::merge(world, settings, &radiance, level);
             })),
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-                set_block_size([4, 2, 16]);
+                set_block_size([16, 4, 2]);
                 single_stochastic_preaverage::merge(world, settings, &radiance, level);
             })),
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-                set_block_size([2, 2, 32]);
+                set_block_size([32, 2, 2]);
                 single_stochastic_preaverage::merge(world, settings, &radiance, level);
             })),
             //             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
@@ -66,7 +66,7 @@ impl RadianceCascades {
             commands.push(
                 self.merge_kernels[(level / 2) as usize]
                     .dispatch_async(
-                        [level_size.probes.x, level_size.probes.y, level_size.facings],
+                        [level_size.facings, level_size.probes.x, level_size.probes.y],
                         &level,
                     )
                     .debug(format!("merge level {}", level)),

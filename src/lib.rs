@@ -416,8 +416,8 @@ pub fn main() {
             let start = std::time::Instant::now();
             commands.execute();
             total_runtime += start.elapsed().as_secs_f32() * 1000.0;
-            if t % 100 == 0 {
-                println!("Frame time: {:?}ms", total_runtime / 100.0);
+            if t % 1000 == 0 {
+                println!("Frame time: {:?}ms", total_runtime / 1000.0);
                 total_runtime = 0.0;
             }
         }
@@ -442,15 +442,15 @@ pub fn main() {
                     }
                 }
             }
-            if t % 100 == 0 {
+            if t % 300 == 0 {
                 println!("Runtime:");
                 if num_bounces > 0 {
                     for (i, time) in total_runtime.iter().enumerate().take(num_bounces) {
-                        println!("  Bounce {}: {}ms", i, time / 100.0);
+                        println!("  Bounce {}: {}ms", i, time / 300.0);
                     }
                 }
-                println!("  Display: {}ms", total_runtime[num_bounces] / 100.0);
-                println!("  Total: {}ms", total_runtime.iter().sum::<f32>() / 100.0);
+                println!("  Display: {}ms", total_runtime[num_bounces] / 300.0);
+                println!("  Total: {}ms", total_runtime.iter().sum::<f32>() / 300.0);
                 total_runtime.fill(0.0);
             }
         }

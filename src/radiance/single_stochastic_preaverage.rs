@@ -21,8 +21,8 @@ pub fn merge(
     let sm_size = block_size().iter().product::<u32>() as usize;
     let radiance_shared = Shared::<Radiance>::new(sm_size);
 
-    let probe = dispatch_id().xy();
-    let facing = dispatch_id().z;
+    let probe = dispatch_id().yz();
+    let facing = dispatch_id().x;
 
     let probe_pos = settings.probe_location(probe, level);
 
@@ -57,20 +57,21 @@ pub fn merge(
         world.environment.read(facing)
     };
 
-    let probe_offset = block_size()[2] * (thread_id().x + block_size()[0] * thread_id().y);
+    let probe_offset = block_size()[0] * (thread_id().y + block_size()[1] * thread_id().z);
 
     radiance_shared.write(
-        thread_id().z + probe_offset,
+        thread_id().x + probe_offset,
         ray_fluence.over_color(next_radiance),
     );
 
-    sync_block();
+    // Unnecessary since each warp includes 4 facings.
+    // sync_block();
 
     if facing % 4 == 0 {
         let total_radiance = Radiance::splat(0.0_f32).var();
         #[allow(unused_parens)]
         for i in (0_u32..4_u32) {
-            *total_radiance += radiance_shared.read(thread_id().z + i + probe_offset);
+            *total_radiance += radiance_shared.read(thread_id().x + i + probe_offset);
         }
         let avg_radiance = total_radiance / 4.0;
         radiance.write(
