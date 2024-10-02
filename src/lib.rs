@@ -106,12 +106,15 @@ pub fn main() {
         .init();
 
     let world = World::new(grid_size[0], grid_size[1]);
-    let environment =
-        DEVICE.create_buffer(cascades.level_size(cascades.num_cascades).facings as usize / 4);
+    // Size is because of preaveraging.
+    let environment = DEVICE.create_buffer(
+        (cascades.level_size(cascades.num_cascades).facings / cascades.branches()) as usize,
+    );
     let bounce_environment = DEVICE.create_buffer(
-        bounce_cascades
+        (bounce_cascades
             .level_size(bounce_cascades.num_cascades)
-            .facings as usize,
+            .facings
+            / bounce_cascades.branches()) as usize,
     );
 
     if std::fs::exists(&env_file_name).unwrap_or(false) {

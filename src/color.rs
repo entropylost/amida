@@ -60,6 +60,7 @@ impl Fluence {
             transmittance: Transmittance::splat(1.0),
         }
     }
+    #[expect(unused)]
     pub fn black() -> Self {
         Self {
             radiance: Radiance::splat(0.0),

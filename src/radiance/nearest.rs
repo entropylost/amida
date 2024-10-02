@@ -1,3 +1,8 @@
+use luisa::lang::{
+    functions::{sync_block, thread_id},
+    types::shared::Shared,
+};
+
 use super::*;
 
 #[tracked]
@@ -7,14 +12,8 @@ pub fn merge(
     radiance: &CascadeStorage<Radiance>,
     level: Expr<u32>,
 ) {
-    set_block_size([8, 4, 1]);
-    let facing = dispatch_id().z;
-    let probe = dispatch_id().xy();
-    let ray = RayLocation::from_comps_expr(RayLocationComps {
-        probe,
-        facing,
-        level,
-    });
+    let probe = dispatch_id().yz();
+    let facing = dispatch_id().x;
 
     let probe_pos = settings.probe_location(probe, level);
 
@@ -36,24 +35,44 @@ pub fn merge(
         Vec2::expr(0.0, (ray_end - ray_start).length()),
     );
 
-    let total_radiance = Radiance::splat(0.0_f32).var();
-    for i in 0_u32.expr()..settings.branches().expr() {
-        let next_facing = facing * settings.branches() + i;
+    let next_ray = RayLocation::from_comps_expr(RayLocationComps {
+        probe: next_probe,
+        facing,
+        level: next_level,
+    });
 
-        let next_ray = RayLocation::from_comps_expr(RayLocationComps {
-            probe: next_probe,
-            facing: next_facing,
-            level: next_level,
-        });
+    let next_radiance = if next_level < settings.num_cascades {
+        radiance.read(next_ray)
+    } else {
+        world.environment.read(facing)
+    };
 
-        let next_radiance = if next_level < settings.num_cascades {
-            radiance.read(next_ray)
-        } else {
-            world.environment.read(next_facing)
-        };
+    let radiance_shared = Shared::<Radiance>::new(block_size().iter().product::<u32>() as usize);
 
-        *total_radiance += next_radiance;
+    let probe_offset = block_size()[0] * (thread_id().y + block_size()[1] * thread_id().z);
+
+    radiance_shared.write(
+        thread_id().x + probe_offset,
+        ray_fluence.over_color(next_radiance),
+    );
+
+    // Should be unnecessary since each warp includes 4 facings,
+    // but we don't have a sync_warp function and this can apparently break.
+    sync_block();
+
+    if facing % settings.branches() == 0 {
+        let total_radiance = (0..settings.branches())
+            .map(|i| radiance_shared.read(thread_id().x + i + probe_offset))
+            .reduce(AddExpr::add)
+            .unwrap();
+        let avg_radiance = total_radiance / settings.branches() as f32;
+        radiance.write(
+            RayLocation::from_comps_expr(RayLocationComps {
+                probe,
+                facing: facing / settings.branches(),
+                level,
+            }),
+            avg_radiance,
+        );
     }
-    let avg_radiance = total_radiance / settings.branches() as f32;
-    radiance.write(ray, ray_fluence.over_color(avg_radiance));
 }

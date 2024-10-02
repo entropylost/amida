@@ -13,7 +13,8 @@ pub fn merge(
     level: Expr<u32>,
 ) {
     let probe = dispatch_id().yz();
-    let facing = dispatch_id().x;
+    let facing = dispatch_id().x / 4;
+    let probe_offset = dispatch_id().x % 4;
 
     let probe_pos = settings.probe_location(probe, level);
 
@@ -24,13 +25,10 @@ pub fn merge(
     let next_level = level + 1;
     let samples = settings.bilinear_samples(probe, next_level);
 
-    let out_radiance = Radiance::splat(0.0_f32).var();
-
-    for probe_offset in 0_u32.expr()..4_u32.expr() {
-        let (next_probe, weight) = samples.sample(probe_offset);
-        if (next_probe >= settings.level_size_expr(next_level).probes).any() {
-            continue;
-        }
+    let (next_probe, weight) = samples.sample(probe_offset);
+    let out_radiance = if (next_probe >= settings.level_size_expr(next_level).probes).any() {
+        Vec3::splat_expr(0.0)
+    } else {
         let next_probe_pos = settings.probe_location(next_probe, next_level);
         let ray_start = probe_pos + ray_dir * interval.x;
         let ray_end = next_probe_pos + ray_dir * interval.y;
@@ -55,22 +53,34 @@ pub fn merge(
         };
 
         let merged_radiance = ray_fluence.over_color(next_radiance);
-        *out_radiance += merged_radiance * weight;
-    }
+        merged_radiance * weight
+    };
 
     let radiance_shared = Shared::<Radiance>::new(block_size().iter().product::<u32>() as usize);
+    let radiance_shared_2 =
+        Shared::<Radiance>::new(block_size().iter().product::<u32>() as usize / 4);
 
-    let probe_offset = block_size()[0] * (thread_id().y + block_size()[1] * thread_id().z);
+    let block_probe_offset = block_size()[0] * (thread_id().y + block_size()[1] * thread_id().z);
 
-    radiance_shared.write(thread_id().x + probe_offset, out_radiance);
+    radiance_shared.write(thread_id().x + block_probe_offset, out_radiance);
 
     // Should be unnecessary since each warp includes 4 facings,
     // but we don't have a sync_warp function and this can apparently break.
     sync_block();
 
-    if facing % settings.branches() == 0 {
+    if thread_id().x % 4 == 0 {
+        let total_radiance = (0..4)
+            .map(|i| radiance_shared.read(thread_id().x + i + block_probe_offset))
+            .reduce(AddExpr::add)
+            .unwrap();
+        radiance_shared_2.write(thread_id().x / 4 + block_probe_offset / 4, total_radiance);
+    }
+
+    sync_block();
+
+    if facing % settings.branches() == 0 && thread_id().x % 4 == 0 {
         let total_radiance = (0..settings.branches())
-            .map(|i| radiance_shared.read(thread_id().x + i + probe_offset))
+            .map(|i| radiance_shared_2.read(thread_id().x / 4 + i + block_probe_offset / 4))
             .reduce(AddExpr::add)
             .unwrap();
         let avg_radiance = total_radiance / settings.branches() as f32;
