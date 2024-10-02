@@ -1,3 +1,5 @@
+use radiance::TuningSettings;
+
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -7,9 +9,12 @@ pub struct Settings {
     pub pixel_size: u32,
     pub dpi: f64,
     pub bounce_cascades: CascadeSettings,
+    pub bounce_tuning: TuningSettings,
     pub cascades: CascadeSettings,
+    pub display_tuning: TuningSettings,
     pub merge_variant: usize,
     pub num_bounces: usize,
+    pub paused: bool,
     pub run_final: bool,
     pub show_diff: bool,
     pub raw_radiance: bool,
@@ -35,6 +40,15 @@ impl Default for Settings {
                 spatial_factor: 1,
                 angular_factor: 2,
             },
+            bounce_tuning: TuningSettings {
+                block_sizes: [
+                    (vec![0], [4, 8, 4]),
+                    (vec![1, 2], [16, 4, 2]),
+                    (vec![3, 4, 5, 6], [32, 2, 2]),
+                ]
+                .into_iter()
+                .collect(),
+            },
             cascades: CascadeSettings {
                 base_interval: (0.0, 1.0),
                 base_probe_spacing: 1.0,
@@ -46,8 +60,18 @@ impl Default for Settings {
                 spatial_factor: 1,
                 angular_factor: 2,
             },
+            display_tuning: TuningSettings {
+                block_sizes: [
+                    (vec![0, 1], [4, 8, 4]),
+                    (vec![2, 3], [16, 4, 2]),
+                    (vec![4, 5, 6, 7], [32, 2, 2]),
+                ]
+                .into_iter()
+                .collect(),
+            },
             merge_variant: 0,
             num_bounces: 0,
+            paused: false,
             run_final: true,
             show_diff: false,
             raw_radiance: false,

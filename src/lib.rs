@@ -91,7 +91,10 @@ pub fn main() {
         .ok()
         .map(ron::de::from_reader)
         .map(Result::unwrap)
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            eprintln!("Could not load settings file, using default settings.");
+            Default::default()
+        });
 
     let grid_size = settings.world_size;
     let grid_dispatch = [grid_size[0], grid_size[1], 1];
@@ -151,6 +154,7 @@ pub fn main() {
             diff: difference.view(0),
             diff_blocks: difference_blocks.view(0),
         },
+        settings.bounce_tuning,
     );
     let radiance_cascades = RadianceCascades::new(
         cascades,
@@ -162,6 +166,7 @@ pub fn main() {
             diff: difference.view(0),
             diff_blocks: difference_blocks.view(0),
         },
+        settings.display_tuning,
     );
 
     let update_radiance_kernel = DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
@@ -267,6 +272,7 @@ pub fn main() {
 
     let mut merge_variant = settings.merge_variant;
     let mut num_bounces = settings.num_bounces;
+    let mut paused = settings.paused;
     let mut run_final = settings.run_final;
     let mut show_diff = settings.show_diff;
     let mut raw_radiance = settings.raw_radiance;
@@ -306,9 +312,12 @@ pub fn main() {
     };
 
     app.run(|rt, scope| {
-        drop(scope);
+        display_kernel
+            .dispatch_async(grid_dispatch, &show_diff)
+            .debug("Display")
+            .execute_in(&scope);
 
-        t += 1;
+        drop(scope);
 
         #[cfg(feature = "record")]
         if rt.pressed_key(KeyCode::KeyX) {
@@ -364,6 +373,13 @@ pub fn main() {
         } else if rt.just_pressed_key(KeyCode::KeyL) {
             world.load(&world_file_name);
             println!("Loaded");
+        } else if rt.just_pressed_key(KeyCode::Space) {
+            paused = !paused;
+            if paused {
+                println!("Paused");
+            } else {
+                println!("Running");
+            }
         } else {
             for (key, material) in &settings.key_materials {
                 if rt.pressed_key(*key) {
@@ -378,6 +394,12 @@ pub fn main() {
                 draw(pos, brush_radius, material);
             }
         }
+
+        if paused {
+            return;
+        }
+
+        t += 1;
 
         let commands = (
             world
@@ -397,6 +419,7 @@ pub fn main() {
                                 &world.opacity,
                             )
                             .debug("Update diff"),
+                        // No observable difference between variants, so use cheaper one.
                         bounce_radiance_cascades.update(0),
                         update_radiance_kernel
                             .dispatch_async(grid_dispatch, &0)
@@ -417,9 +440,6 @@ pub fn main() {
                 )
                     .chain()
             }),
-            display_kernel
-                .dispatch_async(grid_dispatch, &show_diff)
-                .debug("Display"),
         )
             .chain();
         #[cfg(not(feature = "trace"))]
@@ -435,7 +455,7 @@ pub fn main() {
         #[cfg(feature = "trace")]
         {
             let timings = commands.execute_timed();
-            if rt.just_pressed_key(KeyCode::Space) {
+            if rt.just_pressed_key(KeyCode::Backslash) {
                 println!("{:?}", timings);
             }
             {
