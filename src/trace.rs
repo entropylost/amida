@@ -210,8 +210,8 @@ fn trace_radiance_multilevel_while<B: Block>(
 
     let finished = false.var();
 
-    while !finished {
-        for _i in 0_u32.expr()..1000_u32.expr() {
+    loop {
+        loop {
             let next_t = side_dist.reduce_min();
 
             let block = B::read(&world.diff, pos / B::SIZE);
@@ -263,7 +263,7 @@ fn trace_radiance_multilevel_while<B: Block>(
 
         let next_t = block_side_dist.reduce_min().var();
 
-        for _i in 0_u32.expr()..1000_u32.expr() {
+        loop {
             if next_t >= interval_size {
                 let segment_size = interval_size - last_t;
                 let radiance = world.radiance.read(pos);
@@ -305,303 +305,11 @@ fn trace_radiance_multilevel_while<B: Block>(
                 break;
             }
         }
-    }
-    **fluence
-}
 
-#[allow(unused)]
-#[tracked]
-fn trace_radiance_multilevel_single<B: Block>(
-    world: &TraceWorld<B>,
-    ray_start: Expr<Vec2<f32>>,
-    ray_dir: Expr<Vec2<f32>>,
-    interval: Expr<Interval>,
-) -> Expr<Fluence> {
-    let inv_dir = (ray_dir + f32::EPSILON).recip();
-
-    let interval = intersect_intervals(
-        interval,
-        aabb_intersect(
-            ray_start,
-            inv_dir,
-            Vec2::splat_expr(0.01),
-            Vec2::expr(world.width() as f32, world.height() as f32) - Vec2::splat_expr(0.01),
-        ),
-    );
-
-    let ray_start = ray_start + interval.x * ray_dir;
-
-    let pos = ray_start.floor().cast_u32().var();
-    let block_pos = (pos / B::SIZE).var();
-
-    let delta_dist = inv_dir.abs();
-    let block_delta_dist = delta_dist * B::SIZE as f32;
-
-    let ray_step = ray_dir.signum().cast_i32().cast_u32();
-    let side_dist =
-        (ray_dir.signum() * (pos.cast_f32() - ray_start) + ray_dir.signum() * 0.5 + 0.5)
-            * delta_dist;
-    let side_dist = side_dist.var();
-    let block_side_dist = (ray_dir.signum() * (block_pos.cast_f32() - ray_start / B::SIZE as f32)
-        + ray_dir.signum() * 0.5
-        + 0.5)
-        * block_delta_dist;
-    let block_side_dist = block_side_dist.var();
-
-    let block_offset =
-        (ray_dir > 0.0).select(Vec2::splat_expr(0_u32), Vec2::splat_expr(B::SIZE - 1));
-
-    let interval_size = interval.y - interval.x;
-
-    if !world.diff_blocks.read(block_pos) && block_side_dist.reduce_min() < interval_size {
-        let next_t = block_side_dist.reduce_min().var();
-        for _i in 0_u32.expr()..1000_u32.expr() {
-            let mask = block_side_dist <= block_side_dist.yx();
-
-            *block_side_dist += mask.select(block_delta_dist, Vec2::splat_expr(0.0));
-            *block_pos += mask.select(ray_step, Vec2::splat_expr(0));
-
-            let last_t = **next_t;
-            *next_t = block_side_dist.reduce_min();
-
-            if world.diff_blocks.read(block_pos) || next_t >= interval_size {
-                *pos = mask.select(
-                    block_pos * B::SIZE + block_offset,
-                    (last_t * ray_dir + ray_start).floor().cast_u32(),
-                );
-                *side_dist = (ray_dir.signum() * (pos.cast_f32() - ray_start)
-                    + ray_dir.signum() * 0.5
-                    + 0.5)
-                    * delta_dist;
-
-                break;
-            }
+        if finished {
+            break;
         }
     }
-    let last_t = 0.0_f32.var();
-    let fluence = Fluence::transparent().var();
-
-    for _i in 0_u32.expr()..1000_u32.expr() {
-        let next_t = side_dist.reduce_min();
-
-        if B::get(B::read(&world.diff, pos / B::SIZE), pos % B::SIZE) || next_t >= interval_size {
-            let segment_size = luisa::min(next_t, interval_size) - last_t;
-            let radiance = world.radiance.read(pos);
-            let opacity = world.opacity.read(pos);
-            *fluence = fluence.over(
-                Color::from_comps_expr(ColorComps { radiance, opacity }).as_fluence(segment_size),
-            );
-
-            *last_t = next_t;
-
-            if (fluence.transmittance < TRANSMITTANCE_CUTOFF).all() {
-                *fluence.transmittance = Vec3::splat(0.0);
-                break;
-            }
-
-            if next_t >= interval_size {
-                break;
-            }
-        }
-
-        let mask = side_dist <= side_dist.yx();
-
-        *side_dist += mask.select(delta_dist, Vec2::splat_expr(0.0));
-        *pos += mask.select(ray_step, Vec2::splat_expr(0));
-    }
-    **fluence
-}
-
-#[allow(unused)]
-#[tracked]
-fn trace_radiance_multilevel_if<B: Block>(
-    world: &TraceWorld<B>,
-    ray_start: Expr<Vec2<f32>>,
-    ray_dir: Expr<Vec2<f32>>,
-    interval: Expr<Interval>,
-) -> Expr<Fluence> {
-    let inv_dir = (ray_dir + f32::EPSILON).recip();
-
-    let interval = intersect_intervals(
-        interval,
-        aabb_intersect(
-            ray_start,
-            inv_dir,
-            Vec2::splat_expr(0.01),
-            Vec2::expr(world.width() as f32, world.height() as f32) - Vec2::splat_expr(0.01),
-        ),
-    );
-
-    let ray_start = ray_start + interval.x * ray_dir;
-
-    let pos = ray_start.floor().cast_u32().var();
-    let block_pos = (pos / B::SIZE).var();
-
-    let delta_dist = inv_dir.abs();
-    let block_delta_dist = delta_dist * B::SIZE as f32;
-
-    let ray_step = ray_dir.signum().cast_i32().cast_u32();
-    let side_dist =
-        (ray_dir.signum() * (pos.cast_f32() - ray_start) + ray_dir.signum() * 0.5 + 0.5)
-            * delta_dist;
-    let side_dist = side_dist.var();
-    let block_side_dist = (ray_dir.signum() * (block_pos.cast_f32() - ray_start / B::SIZE as f32)
-        + ray_dir.signum() * 0.5
-        + 0.5)
-        * block_delta_dist;
-    let block_side_dist = block_side_dist.var();
-
-    let block_offset = (ray_dir > 0.0).select(Vec2::splat_expr(0), Vec2::splat_expr(B::SIZE - 1));
-
-    let block = B::read(&world.diff, **block_pos).var();
-
-    let interval_size = interval.y - interval.x;
-
-    let last_t = 0.0_f32.var();
-
-    let fluence = Fluence::transparent().var();
-
-    for _i in 0_u32.expr()..1000_u32.expr() {
-        if B::is_empty(**block) || (pos / B::SIZE != block_pos).any() {
-            let t = block_side_dist.reduce_min();
-            let mask = block_side_dist <= block_side_dist.yx();
-
-            *block_side_dist += mask.select(block_delta_dist, Vec2::splat_expr(0.0));
-            *block_pos += mask.select(ray_step, Vec2::splat_expr(0));
-
-            *block = B::read(&world.diff, **block_pos);
-
-            let next_t = block_side_dist.reduce_min();
-
-            if !B::is_empty(**block) {
-                *pos = mask.select(
-                    block_pos * B::SIZE + block_offset,
-                    (t * ray_dir + ray_start).floor().cast_u32(),
-                );
-                *side_dist = (ray_dir.signum() * (pos.cast_f32() - ray_start)
-                    + ray_dir.signum() * 0.5
-                    + 0.5)
-                    * delta_dist;
-            } else if next_t >= interval_size {
-                let pos = block_pos * B::SIZE;
-                let segment_size = interval_size - last_t;
-                let radiance = world.radiance.read(pos);
-                let opacity = world.opacity.read(pos);
-                *fluence = fluence.over(
-                    Color::from_comps_expr(ColorComps { radiance, opacity })
-                        .as_fluence(segment_size),
-                );
-                break;
-            } else {
-                continue;
-            }
-        }
-        let next_t = side_dist.reduce_min();
-
-        if B::get(**block, pos % B::SIZE) || next_t >= interval_size {
-            let segment_size = luisa::min(next_t, interval_size) - last_t;
-            let radiance = world.radiance.read(pos);
-            let opacity = world.opacity.read(pos);
-            *fluence = fluence.over(
-                Color::from_comps_expr(ColorComps { radiance, opacity }).as_fluence(segment_size),
-            );
-
-            *last_t = next_t;
-
-            if (fluence.transmittance < TRANSMITTANCE_CUTOFF).all() {
-                *fluence.transmittance = Vec3::splat(0.0);
-                break;
-            }
-
-            if next_t >= interval_size {
-                break;
-            }
-        }
-
-        let mask = side_dist <= side_dist.yx();
-
-        *side_dist += mask.select(delta_dist, Vec2::splat_expr(0.0));
-        *pos += mask.select(ray_step, Vec2::splat_expr(0));
-    }
-    **fluence
-}
-
-#[allow(unused)]
-#[tracked]
-fn trace_radiance_block_load<B: Block>(
-    world: &TraceWorld<B>,
-    ray_start: Expr<Vec2<f32>>,
-    ray_dir: Expr<Vec2<f32>>,
-    interval: Expr<Interval>,
-) -> Expr<Fluence> {
-    let inv_dir = (ray_dir + f32::EPSILON).recip();
-
-    let interval = intersect_intervals(
-        interval,
-        aabb_intersect(
-            ray_start,
-            inv_dir,
-            Vec2::splat_expr(0.01),
-            Vec2::expr(world.width() as f32, world.height() as f32) - Vec2::splat_expr(0.01),
-        ),
-    );
-
-    let ray_start = ray_start + interval.x * ray_dir;
-
-    let pos = ray_start.floor().cast_u32().var();
-    let block_pos = (pos / B::SIZE).var();
-
-    let delta_dist = inv_dir.abs();
-
-    let ray_step = ray_dir.signum().cast_i32().cast_u32();
-    let side_dist =
-        (ray_dir.signum() * (pos.cast_f32() - ray_start) + ray_dir.signum() * 0.5 + 0.5)
-            * delta_dist;
-    let side_dist = side_dist.var();
-
-    let block = B::read(&world.diff, **block_pos).var();
-
-    let interval_size = interval.y - interval.x;
-
-    let last_t = 0.0_f32.var();
-
-    let fluence = Fluence::transparent().var();
-
-    for _i in 0_u32.expr()..1000_u32.expr() {
-        let pred = pos / B::SIZE;
-        if (pred != block_pos).any() {
-            *block_pos = pred;
-            *block = B::read(&world.diff, **block_pos);
-        }
-
-        let next_t = side_dist.reduce_min();
-
-        if B::get(**block, pos % B::SIZE) || next_t >= interval_size {
-            let segment_size = luisa::min(next_t, interval_size) - last_t;
-            let radiance = world.radiance.read(pos);
-            let opacity = world.opacity.read(pos);
-            *fluence = fluence.over(
-                Color::from_comps_expr(ColorComps { radiance, opacity }).as_fluence(segment_size),
-            );
-
-            *last_t = next_t;
-
-            if (fluence.transmittance < TRANSMITTANCE_CUTOFF).all() {
-                *fluence.transmittance = Vec3::splat(0.0);
-                break;
-            }
-
-            if next_t >= interval_size {
-                break;
-            }
-        }
-
-        let mask = side_dist <= side_dist.yx();
-
-        *side_dist += mask.select(delta_dist, Vec2::splat_expr(0.0));
-        *pos += mask.select(ray_step, Vec2::splat_expr(0));
-    }
-
     **fluence
 }
 
@@ -643,7 +351,7 @@ fn trace_radiance_simple<B: Block>(
 
     let fluence = Fluence::transparent().var();
 
-    for _i in 0_u32.expr()..1000_u32.expr() {
+    loop {
         let next_t = side_dist.reduce_min();
 
         if B::get(B::read(&world.diff, pos / B::SIZE), pos % B::SIZE) || next_t >= interval_size {

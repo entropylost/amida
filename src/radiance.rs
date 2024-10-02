@@ -4,7 +4,6 @@ use trace::trace_radiance;
 use utils::pcg3df;
 
 mod bilinear_fix;
-mod bilinear_fix_sep;
 mod nearest;
 mod single_stochastic;
 
@@ -27,26 +26,17 @@ impl RadianceCascades {
 
         let merge_kernels = vec![
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-                set_block_size([16, 8, 4]);
-                bilinear_fix_sep::merge(world, settings, &radiance, level);
+                set_block_size([4, 8, 4]);
+                single_stochastic::merge(world, settings, &radiance, level);
             })),
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
                 set_block_size([16, 4, 2]);
-                bilinear_fix_sep::merge(world, settings, &radiance, level);
+                single_stochastic::merge(world, settings, &radiance, level);
             })),
             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
                 set_block_size([32, 2, 2]);
-                bilinear_fix_sep::merge(world, settings, &radiance, level);
+                single_stochastic::merge(world, settings, &radiance, level);
             })),
-            //             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-            //                 full_stochastic::merge(world, settings, &radiance, level);
-            //             })),
-            //             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-            //                 bilinear_fix::merge(world, settings, &radiance, level);
-            //             })),
-            //             DEVICE.create_kernel::<fn(u32)>(&track!(|level| {
-            //                 nearest::merge(world, settings, &radiance, level);
-            //             })),
         ];
 
         Self {
@@ -65,11 +55,7 @@ impl RadianceCascades {
             commands.push(
                 self.merge_kernels[(level / 2) as usize]
                     .dispatch_async(
-                        [
-                            level_size.facings * 4,
-                            level_size.probes.x,
-                            level_size.probes.y,
-                        ],
+                        [level_size.facings, level_size.probes.x, level_size.probes.y],
                         &level,
                     )
                     .debug(format!("merge level {}", level)),

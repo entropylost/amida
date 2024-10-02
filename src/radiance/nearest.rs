@@ -5,6 +5,7 @@ use luisa::lang::{
 
 use super::*;
 
+#[allow(unused)]
 #[tracked]
 pub fn merge(
     world: &TraceWorld,
