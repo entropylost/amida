@@ -32,6 +32,15 @@ Note that any arguments not provided will be loaded from the default files in th
 - R: Show the raw radiance map (because some environments may not have the background be white).
 - F: Show the bounce lighting.
 
+The .tiff files can be edited using GIMP - although when exporting, all metadata should be removed. All layers use linear RGB. The layers are:
+
+- `emissive`: The amount of light emitted by pixels. Can be set greater than 1.
+- `diffuse`: The diffuse color, used for bouncing.
+- `opacity`: The opacity of materials during bounces.
+- `display_emissive`: The amount of added color to the final image.
+- `display_diffuse`: The amount of the radiance added to the final image.
+- `display_opacity`: The opacity in the final bounce. This is split from `opacity` to allow for light bleeding effects.
+
 ## Known Bugs
 
 - Having walls in the upper left edges of the screen will causes nans.
@@ -40,3 +49,9 @@ Note that any arguments not provided will be loaded from the default files in th
 ## Gallery
 
 ![Sir, this is a RADIANCE CASCADES discord server](images/thisisradiancecascades.png)
+
+Any contributions to the gallery (or to other parts of this project) would be greatly appreciated.
+
+---
+
+Join the [Radiance Cascades Discord](https://discord.gg/EF9JfcEJPd) for more information and to discuss the algorithm!
