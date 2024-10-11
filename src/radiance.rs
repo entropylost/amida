@@ -1,3 +1,5 @@
+// TODO: The algorithms seem to break on the upper left edges and causes nans.
+
 use std::ops::Mul;
 
 use super::*;

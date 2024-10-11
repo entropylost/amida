@@ -127,6 +127,8 @@ pub fn main() {
     }
     if std::fs::exists(&world_file_name).unwrap_or(false) {
         world.load(&world_file_name);
+    } else {
+        world.load_default();
     }
 
     let radiance =

@@ -15,7 +15,7 @@ winit = { version = "0.29.15", features = ["serde"] }
 
 
 [features]
-default = ["record", "trace", "block64"]
+default = ["block64"]
 record = ["sefirot_testbed/video"]
 trace = ["sefirot/trace"]
 block16 = []

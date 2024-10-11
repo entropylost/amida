@@ -30,6 +30,14 @@ impl World {
     pub fn height(&self) -> u32 {
         self.size[1]
     }
+    pub fn load_default(&self) {
+        DEVICE
+            .create_kernel::<fn()>(&track!(|| {
+                self.display_diffuse
+                    .write(dispatch_id().xy(), Vec3::splat_expr(1.0));
+            }))
+            .dispatch([self.width(), self.height(), 1]);
+    }
     pub fn load(&self, path: impl AsRef<Path> + Copy) {
         let staging_buffer =
             DEVICE.create_buffer::<f32>(3 * (self.width() * self.height()) as usize);
