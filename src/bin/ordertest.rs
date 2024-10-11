@@ -1,3 +1,7 @@
+// https://developer.nvidia.com/blog/optimizing-compute-shaders-for-l2-locality-using-thread-group-id-swizzling/
+// https://github.com/LouisBavoil/ThreadGroupIDSwizzling/blob/master/ThreadGroupTilingX.hlsl
+// https://computergraphics.stackexchange.com/questions/9956/performance-of-compute-shaders-vs-fragment-shaders-for-deferred-rendering
+
 use luisa::lang::functions::{block_id, sync_block, thread_id};
 use luisa::lang::types::shared::Shared;
 use luisa::lang::types::vector::{Vec2, Vec3};

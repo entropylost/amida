@@ -289,7 +289,7 @@ pub fn main() {
     #[rustfmt::skip]
     let draw_kernel = DEVICE.create_kernel::<fn(Vec2<f32>, f32, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>)>(
         &track!(|pos, radius, emissive, diffuse, opacity, display_emissive, display_diffuse, display_opacity| {
-            if (dispatch_id().xy().cast_f32() - pos).length() < radius {
+            if (dispatch_id().xy().cast_f32() - pos).abs().reduce_max() < radius {
                 world.emissive.write(dispatch_id().xy(), emissive);
                 world.diffuse.write(dispatch_id().xy(), diffuse);
                 world.opacity.write(dispatch_id().xy(), opacity);
