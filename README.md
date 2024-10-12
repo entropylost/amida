@@ -35,7 +35,7 @@ Note that any arguments not provided will be loaded from the default files in th
 The .tiff files can be edited using GIMP - although when exporting, all metadata should be removed. All layers use linear RGB. The layers are:
 
 - `emissive`: The amount of light emitted by pixels. Can be set greater than 1.
-- `diffuse`: The diffuse color, used for bouncing.
+- `diffuse`: The diffuse color, used for bouncing. Note that diffuse bouncing is completely rotationally-symmetric, so approximately half of the light will be bounced *into* the object.
 - `opacity`: The opacity of materials during bounces.
 - `display_emissive`: The amount of added color to the final image.
 - `display_diffuse`: The amount of the radiance added to the final image.
@@ -43,8 +43,7 @@ The .tiff files can be edited using GIMP - although when exporting, all metadata
 
 ## Known Bugs
 
-- Having walls in the upper left edges of the screen will causes nans.
-- The dpi scaling is broken and has to be manually adjusted.
+- The dpi scaling is broken and has to be manually adjusted. Use the `settings/dpi2.ron` file when having a 2x scaling.
 
 ## Gallery
 

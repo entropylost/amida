@@ -187,130 +187,134 @@ fn trace_radiance_multilevel_while<B: Block>(
         ),
     );
 
-    let ray_start = ray_start + interval.x * ray_dir;
+    if interval.x >= interval.y {
+        Fluence::transparent().expr()
+    } else {
+        let ray_start = ray_start + interval.x * ray_dir;
 
-    let pos = ray_start.floor().cast_u32().var();
+        let pos = ray_start.floor().cast_u32().var();
 
-    let delta_dist = inv_dir.abs();
-    let block_delta_dist = delta_dist * B::SIZE as f32;
+        let delta_dist = inv_dir.abs();
+        let block_delta_dist = delta_dist * B::SIZE as f32;
 
-    let ray_step = ray_dir.signum().cast_i32().cast_u32();
-    let side_dist =
-        (ray_dir.signum() * (pos.cast_f32() - ray_start) + ray_dir.signum() * 0.5 + 0.5)
-            * delta_dist;
-    let side_dist = side_dist.var();
+        let ray_step = ray_dir.signum().cast_i32().cast_u32();
+        let side_dist =
+            (ray_dir.signum() * (pos.cast_f32() - ray_start) + ray_dir.signum() * 0.5 + 0.5)
+                * delta_dist;
+        let side_dist = side_dist.var();
 
-    let block_offset =
-        (ray_dir > 0.0).select(Vec2::splat_expr(0_u32), Vec2::splat_expr(B::SIZE - 1));
+        let block_offset =
+            (ray_dir > 0.0).select(Vec2::splat_expr(0_u32), Vec2::splat_expr(B::SIZE - 1));
 
-    let interval_size = interval.y - interval.x;
+        let interval_size = interval.y - interval.x;
 
-    let last_t = 0.0_f32.var();
-    let fluence = Fluence::transparent().var();
+        let last_t = 0.0_f32.var();
+        let fluence = Fluence::transparent().var();
 
-    let finished = false.var();
+        let finished = false.var();
 
-    loop {
         loop {
-            let next_t = side_dist.reduce_min();
+            loop {
+                let next_t = side_dist.reduce_min();
 
-            let block = B::read(&world.diff, pos / B::SIZE);
+                let block = B::read(&world.diff, pos / B::SIZE);
 
-            if B::is_empty(block) {
-                break;
-            }
-
-            if B::get(block, pos % B::SIZE) || next_t >= interval_size {
-                let segment_size = luisa::min(next_t, interval_size) - last_t;
-                let radiance = world.radiance.read(pos);
-                let opacity = world.opacity.read(pos);
-                *fluence = fluence.over(
-                    Color::from_comps_expr(ColorComps { radiance, opacity })
-                        .as_fluence(segment_size),
-                );
-
-                *last_t = next_t;
-
-                if (fluence.transmittance < TRANSMITTANCE_CUTOFF).all() {
-                    *fluence.transmittance = Vec3::splat(0.0);
-                    *finished = true;
+                if B::is_empty(block) {
                     break;
                 }
 
+                if B::get(block, pos % B::SIZE) || next_t >= interval_size {
+                    let segment_size = luisa::min(next_t, interval_size) - last_t;
+                    let radiance = world.radiance.read(pos);
+                    let opacity = world.opacity.read(pos);
+                    *fluence = fluence.over(
+                        Color::from_comps_expr(ColorComps { radiance, opacity })
+                            .as_fluence(segment_size),
+                    );
+
+                    *last_t = next_t;
+
+                    if (fluence.transmittance < TRANSMITTANCE_CUTOFF).all() {
+                        *fluence.transmittance = Vec3::splat(0.0);
+                        *finished = true;
+                        break;
+                    }
+
+                    if next_t >= interval_size {
+                        *finished = true;
+                        break;
+                    }
+                }
+
+                let mask = side_dist <= side_dist.yx();
+
+                *side_dist += mask.select(delta_dist, Vec2::splat_expr(0.0));
+                *pos += mask.select(ray_step, Vec2::splat_expr(0));
+            }
+
+            if finished {
+                break;
+            }
+
+            let block_pos = (pos / B::SIZE).var();
+            let block_side_dist = (ray_dir.signum()
+                * (block_pos.cast_f32() - ray_start / B::SIZE as f32)
+                + ray_dir.signum() * 0.5
+                + 0.5)
+                * block_delta_dist;
+            let block_side_dist = block_side_dist.var();
+
+            let next_t = block_side_dist.reduce_min().var();
+
+            loop {
                 if next_t >= interval_size {
+                    let segment_size = interval_size - last_t;
+                    let radiance = world.radiance.read(pos);
+                    let opacity = world.opacity.read(pos);
+                    *fluence = fluence.over(
+                        Color::from_comps_expr(ColorComps { radiance, opacity })
+                            .as_fluence(segment_size),
+                    );
+
                     *finished = true;
+                    break;
+                }
+
+                let mask = block_side_dist <= block_side_dist.yx();
+
+                *block_side_dist += mask.select(block_delta_dist, Vec2::splat_expr(0.0));
+                *block_pos += mask.select(ray_step, Vec2::splat_expr(0));
+
+                let last_t = **next_t;
+                *next_t = block_side_dist.reduce_min();
+
+                if world.diff_blocks.read(block_pos) {
+                    *pos = mask.select(
+                        block_pos * B::SIZE + block_offset,
+                        (last_t * ray_dir + ray_start).floor().cast_u32(),
+                    );
+                    // let a = (pos / B::SIZE == block_pos).all();
+                    // lc_assert!(a);
+                    // This bugfix is necessary due to floating point issues.
+                    if (pos / B::SIZE != block_pos).any() {
+                        // *fluence = Fluence::black();
+                        *finished = true;
+                    }
+                    *side_dist = (ray_dir.signum() * (pos.cast_f32() - ray_start)
+                        + ray_dir.signum() * 0.5
+                        + 0.5)
+                        * delta_dist;
+
                     break;
                 }
             }
 
-            let mask = side_dist <= side_dist.yx();
-
-            *side_dist += mask.select(delta_dist, Vec2::splat_expr(0.0));
-            *pos += mask.select(ray_step, Vec2::splat_expr(0));
-        }
-
-        if finished {
-            break;
-        }
-
-        let block_pos = (pos / B::SIZE).var();
-        let block_side_dist = (ray_dir.signum()
-            * (block_pos.cast_f32() - ray_start / B::SIZE as f32)
-            + ray_dir.signum() * 0.5
-            + 0.5)
-            * block_delta_dist;
-        let block_side_dist = block_side_dist.var();
-
-        let next_t = block_side_dist.reduce_min().var();
-
-        loop {
-            if next_t >= interval_size {
-                let segment_size = interval_size - last_t;
-                let radiance = world.radiance.read(pos);
-                let opacity = world.opacity.read(pos);
-                *fluence = fluence.over(
-                    Color::from_comps_expr(ColorComps { radiance, opacity })
-                        .as_fluence(segment_size),
-                );
-
-                *finished = true;
-                break;
-            }
-
-            let mask = block_side_dist <= block_side_dist.yx();
-
-            *block_side_dist += mask.select(block_delta_dist, Vec2::splat_expr(0.0));
-            *block_pos += mask.select(ray_step, Vec2::splat_expr(0));
-
-            let last_t = **next_t;
-            *next_t = block_side_dist.reduce_min();
-
-            if world.diff_blocks.read(block_pos) {
-                *pos = mask.select(
-                    block_pos * B::SIZE + block_offset,
-                    (last_t * ray_dir + ray_start).floor().cast_u32(),
-                );
-                // let a = (pos / B::SIZE == block_pos).all();
-                // lc_assert!(a);
-                // This bugfix is necessary due to floating point issues.
-                if (pos / B::SIZE != block_pos).any() {
-                    // *fluence = Fluence::black();
-                    *finished = true;
-                }
-                *side_dist = (ray_dir.signum() * (pos.cast_f32() - ray_start)
-                    + ray_dir.signum() * 0.5
-                    + 0.5)
-                    * delta_dist;
-
+            if finished {
                 break;
             }
         }
-
-        if finished {
-            break;
-        }
+        **fluence
     }
-    **fluence
 }
 
 #[allow(unused)]
@@ -333,52 +337,58 @@ fn trace_radiance_simple<B: Block>(
         ),
     );
 
-    let ray_start = ray_start + interval.x * ray_dir;
+    if interval.x >= interval.y {
+        Fluence::transparent().expr()
+    } else {
+        let ray_start = ray_start + interval.x * ray_dir;
 
-    let pos = ray_start.floor().cast_u32().var();
+        let pos = ray_start.floor().cast_u32().var();
 
-    let delta_dist = inv_dir.abs();
+        let delta_dist = inv_dir.abs();
 
-    let ray_step = ray_dir.signum().cast_i32().cast_u32();
-    let side_dist =
-        (ray_dir.signum() * (pos.cast_f32() - ray_start) + ray_dir.signum() * 0.5 + 0.5)
-            * delta_dist;
-    let side_dist = side_dist.var();
+        let ray_step = ray_dir.signum().cast_i32().cast_u32();
+        let side_dist =
+            (ray_dir.signum() * (pos.cast_f32() - ray_start) + ray_dir.signum() * 0.5 + 0.5)
+                * delta_dist;
+        let side_dist = side_dist.var();
 
-    let interval_size = interval.y - interval.x;
+        let interval_size = interval.y - interval.x;
 
-    let last_t = 0.0_f32.var();
+        let last_t = 0.0_f32.var();
 
-    let fluence = Fluence::transparent().var();
+        let fluence = Fluence::transparent().var();
 
-    loop {
-        let next_t = side_dist.reduce_min();
+        loop {
+            let next_t = side_dist.reduce_min();
 
-        if B::get(B::read(&world.diff, pos / B::SIZE), pos % B::SIZE) || next_t >= interval_size {
-            let segment_size = luisa::min(next_t, interval_size) - last_t;
-            let radiance = world.radiance.read(pos);
-            let opacity = world.opacity.read(pos);
-            *fluence = fluence.over(
-                Color::from_comps_expr(ColorComps { radiance, opacity }).as_fluence(segment_size),
-            );
+            if B::get(B::read(&world.diff, pos / B::SIZE), pos % B::SIZE) || next_t >= interval_size
+            {
+                let segment_size = luisa::min(next_t, interval_size) - last_t;
+                let radiance = world.radiance.read(pos);
+                let opacity = world.opacity.read(pos);
+                *fluence = fluence.over(
+                    Color::from_comps_expr(ColorComps { radiance, opacity })
+                        .as_fluence(segment_size),
+                );
 
-            *last_t = next_t;
+                *last_t = next_t;
 
-            if (fluence.transmittance < TRANSMITTANCE_CUTOFF).all() {
-                *fluence.transmittance = Vec3::splat(0.0);
-                break;
+                if (fluence.transmittance < TRANSMITTANCE_CUTOFF).all() {
+                    *fluence.transmittance = Vec3::splat(0.0);
+                    break;
+                }
+
+                if next_t >= interval_size {
+                    break;
+                }
             }
 
-            if next_t >= interval_size {
-                break;
-            }
+            let mask = side_dist <= side_dist.yx();
+
+            *side_dist += mask.select(delta_dist, Vec2::splat_expr(0.0));
+            *pos += mask.select(ray_step, Vec2::splat_expr(0));
         }
 
-        let mask = side_dist <= side_dist.yx();
-
-        *side_dist += mask.select(delta_dist, Vec2::splat_expr(0.0));
-        *pos += mask.select(ray_step, Vec2::splat_expr(0));
+        **fluence
     }
-
-    **fluence
 }
