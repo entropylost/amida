@@ -9,7 +9,7 @@ use std::{
 
 use cascade::{CascadeSettings, CascadeSize, RayLocation, RayLocationComps};
 use color::{Diffuse, Opacity, Radiance};
-use data::{BrushInput, LoadedMaterial, Materials, Settings};
+use data::{BrushInput, LoadedMaterial, Materials, Palette, Settings};
 use glam::Vec3 as FVec3;
 use luisa::lang::types::vector::{Vec2, Vec3};
 use radiance::RadianceCascades;
@@ -81,7 +81,7 @@ pub fn main() {
     let env_file_name = std::env::args()
         .nth(2)
         .unwrap_or_else(|| "env/default.tiff".to_string());
-    let world_file_name = std::env::args()
+    let mut world_file_name = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "world/default.tiff".to_string());
     let settings_file_name = std::env::args()
@@ -96,19 +96,27 @@ pub fn main() {
             eprintln!("Could not load settings file, using default settings.");
             Default::default()
         });
+    let palette: Option<Palette> = std::env::args()
+        .nth(4)
+        .map(File::open)
+        .map(Result::unwrap)
+        .map(ron::de::from_reader)
+        .map(Result::unwrap);
 
     let materials: Materials = File::open(settings.materials)
         .map(ron::de::from_reader)
         .map(Result::unwrap)
         .unwrap_or_default();
-    let materials = materials.into_iter().collect::<Vec<_>>();
+    let materials = materials
+        .into_iter()
+        .map(|(name, m)| (name, LoadedMaterial::from(m)))
+        .collect::<Vec<_>>();
     let material_indices = materials
         .iter()
         .enumerate()
         .map(|(i, (name, _))| (name.clone(), i as u32))
         .collect::<HashMap<_, _>>();
-    let materials_buffer =
-        DEVICE.create_buffer_from_fn(materials.len(), |i| LoadedMaterial::from(materials[i].1));
+    let materials_buffer = DEVICE.create_buffer_from_fn(materials.len(), |i| materials[i].1);
     let mut brush_materials = vec![];
     let mut brushes = HashMap::new();
     for (input, brush) in &settings.brushes {
@@ -154,7 +162,10 @@ pub fn main() {
         downsample_env(&data, &environment);
         downsample_env(&data, &bounce_environment);
     }
-    if std::fs::exists(&world_file_name).unwrap_or(false) {
+    if let Some(palette) = palette {
+        world.load_palette(&world_file_name, palette, &materials);
+        world_file_name += ".tiff";
+    } else if std::fs::exists(&world_file_name).unwrap_or(false) {
         world.load(&world_file_name);
     } else {
         world.load_default();
@@ -334,12 +345,7 @@ pub fn main() {
 
             let delta = dispatch_id().xy().cast_f32() - pos;
             if square.select(delta.abs().reduce_max(), delta.length()) <= radius {
-                world.emissive.write(dispatch_id().xy(), material.emissive);
-                world.diffuse.write(dispatch_id().xy(), material.diffuse);
-                world.opacity.write(dispatch_id().xy(), material.opacity);
-                world.display_emissive.write(dispatch_id().xy(), material.display_emissive);
-                world.display_diffuse.write(dispatch_id().xy(), material.display_diffuse);
-                world.display_opacity.write(dispatch_id().xy(), material.display_opacity);
+                world.write_pixel(dispatch_id().xy(), material);
             }
         }
     ));

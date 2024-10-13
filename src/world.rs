@@ -1,3 +1,6 @@
+use image::ImageReader;
+use utils::pcg_host;
+
 use super::*;
 
 pub struct World {
@@ -133,5 +136,80 @@ impl World {
         save("opacity", &self.opacity);
         save("diffuse", &self.diffuse);
         save("emissive", &self.emissive);
+    }
+
+    pub fn write_pixel(&self, pos: Expr<Vec2<u32>>, material: Expr<LoadedMaterial>) {
+        self.emissive.write(pos, material.emissive);
+        self.diffuse.write(pos, material.diffuse);
+        self.opacity.write(pos, material.opacity);
+        self.display_emissive.write(pos, material.display_emissive);
+        self.display_diffuse.write(pos, material.display_diffuse);
+        self.display_opacity.write(pos, material.display_opacity);
+    }
+
+    pub fn load_palette(
+        &self,
+        path: impl AsRef<Path> + Copy,
+        palette: Palette,
+        materials: &[(String, LoadedMaterial)],
+    ) {
+        let palette = palette
+            .into_iter()
+            .map(|(color, brush)| {
+                let color = csscolorparser::parse(&color).unwrap().to_rgba8();
+                let brush = brush
+                    .as_slice()
+                    .iter()
+                    .map(|x| {
+                        materials
+                            .iter()
+                            .enumerate()
+                            .find(|(_, (name, _))| name == x)
+                            .map(|(i, _)| i as u32)
+                            .unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                (color, brush)
+            })
+            .collect::<HashMap<_, _>>();
+
+        let image = ImageReader::open(path)
+            .unwrap()
+            .decode()
+            .unwrap()
+            .into_rgba8();
+
+        assert!(image.width() == self.width() && image.height() == self.height());
+
+        let staging_buffer =
+            DEVICE.create_buffer::<f32>(3 * (self.width() * self.height()) as usize);
+        let staging_kernel = DEVICE.create_kernel::<fn(Tex2d<Radiance>)>(&track!(|texture| {
+            let index = 3 * (dispatch_id().x + dispatch_id().y * self.width());
+            let value = Vec3::expr(
+                staging_buffer.read(index),
+                staging_buffer.read(index + 1),
+                staging_buffer.read(index + 2),
+            );
+            texture.write(dispatch_id().xy(), value);
+        }));
+
+        let load = |texture: &Tex2d<Radiance>, f: fn(&LoadedMaterial) -> Vec3<f32>| {
+            let data = image
+                .enumerate_pixels()
+                .flat_map(|(i, j, x)| {
+                    let brush = &palette[&x.0];
+                    let material = brush[pcg_host((i << 16) + j) as usize % brush.len()];
+                    <[f32; 3]>::from(f(&materials[material as usize].1))
+                })
+                .collect::<Vec<_>>();
+            staging_buffer.copy_from(&data);
+            staging_kernel.dispatch([self.width(), self.height(), 1], texture);
+        };
+        load(&self.emissive, |x| x.emissive);
+        load(&self.diffuse, |x| x.diffuse);
+        load(&self.opacity, |x| x.opacity);
+        load(&self.display_emissive, |x| x.display_emissive);
+        load(&self.display_diffuse, |x| x.display_diffuse);
+        load(&self.display_opacity, |x| x.display_opacity);
     }
 }

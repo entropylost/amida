@@ -252,3 +252,4 @@ pub struct Material {
 }
 
 pub type Materials = HashMap<String, Material>;
+pub type Palette = HashMap<String, Brush>;
