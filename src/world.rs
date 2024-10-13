@@ -39,10 +39,21 @@ impl World {
             .dispatch([self.width(), self.height(), 1]);
     }
     pub fn load(&self, path: impl AsRef<Path> + Copy) {
+        let file = File::open(path.as_ref().with_extension("tiff")).unwrap();
+        let mut file = TiffDecoder::new(file).unwrap();
+
+        let base_colortype = file.colortype().unwrap();
+        let is_rgba = match base_colortype {
+            ColorType::RGB(32) => false,
+            ColorType::RGBA(32) => true,
+            _ => panic!("Unsupported color type"),
+        };
+        let stride = if is_rgba { 4 } else { 3 };
+
         let staging_buffer =
-            DEVICE.create_buffer::<f32>(3 * (self.width() * self.height()) as usize);
+            DEVICE.create_buffer::<f32>(stride * (self.width() * self.height()) as usize);
         let staging_kernel = DEVICE.create_kernel::<fn(Tex2d<Radiance>)>(&track!(|texture| {
-            let index = 3 * (dispatch_id().x + dispatch_id().y * self.width());
+            let index = stride as u32 * (dispatch_id().x + dispatch_id().y * self.width());
             let value = Vec3::expr(
                 staging_buffer.read(index),
                 staging_buffer.read(index + 1),
@@ -51,12 +62,15 @@ impl World {
             texture.write(dispatch_id().xy(), value);
         }));
 
-        let file = File::open(path.as_ref().with_extension("tiff")).unwrap();
-        let mut file = TiffDecoder::new(file).unwrap();
-
         let mut load = |name: &str, texture: &Tex2d<Radiance>| {
-            // assert_eq!(&file.get_tag_ascii_string(PAGENAME).unwrap(), name);
-            assert_eq!(file.colortype().unwrap(), ColorType::RGB(32));
+            assert_eq!(
+                file.get_tag_ascii_string(PAGENAME)
+                    .as_deref()
+                    .unwrap_or(name),
+                name,
+                "Layer names do not match"
+            );
+            assert_eq!(file.colortype().unwrap(), base_colortype);
             assert_eq!(file.dimensions().unwrap(), (self.width(), self.height()));
             let image = file.read_image().unwrap();
             let DecodingResult::F32(image) = image else {

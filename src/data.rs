@@ -1,22 +1,3 @@
-// TODO: Move materials to separate file list. Then allow for randomized material brush.
-// Also, palettization program.
-// Also also: Import from rgb8 as well, probably using srgb transform.
-// Maybe a way of loading from 6 images?
-// Also make the world size be based on the input image instead of requiring syncing.
-/*
-Taken from: https://www.shadertoy.com/view/tlcSzs
-
-vec3 LinearToSRGB ( vec3 col )
-{
-    return mix( col*12.92, 1.055*pow(col,vec3(1./2.4))-.055, step(.0031308,col) );
-}
-
-vec3 SRGBToLinear ( vec3 col )
-{
-    return mix( col/12.92, pow((col+.055)/1.055,vec3(2.4)), step(.04045,col) );
-}
-*/
-
 use radiance::TuningSettings;
 
 use super::*;
@@ -40,8 +21,8 @@ pub struct Settings {
     pub display_level: u32,
     pub brush_radius: f32,
     pub draw_square: bool,
-    pub mouse_materials: HashMap<MouseButton, Material>,
-    pub key_materials: HashMap<KeyCode, Material>,
+    pub materials: String,
+    pub brushes: HashMap<BrushInput, Brush>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -98,50 +79,176 @@ impl Default for Settings {
             display_level: 0,
             brush_radius: 5.0,
             draw_square: false,
-            #[rustfmt::skip]
-            mouse_materials: [
-                (MouseButton::Left, Material::new(FVec3::splat(0.0), FVec3::splat(1.0), FVec3::splat(1000.0))),
-                (MouseButton::Middle, Material::new(FVec3::splat(5.0), FVec3::splat(0.0), FVec3::splat(0.3))),
-                (MouseButton::Right, Material::new(FVec3::splat(0.0), FVec3::splat(0.0), FVec3::splat(0.0))),
-                (MouseButton::Back, Material::new(FVec3::splat(0.0), FVec3::splat(0.0), FVec3::new(0.1, 0.1, 0.01))),
-                (MouseButton::Forward, Material::new(FVec3::splat(0.0), FVec3::splat(0.0), FVec3::new(0.01, 0.1, 0.1))),
-            ].into_iter().collect(),
-            key_materials: [].into_iter().collect(),
+            materials: "materials.ron".to_string(),
+            brushes: [
+                (
+                    BrushInput::Mouse(MouseButton::Left),
+                    Brush::Random(vec![
+                        "wall1".to_string(),
+                        "wall2".to_string(),
+                        "wall3".to_string(),
+                    ]),
+                ),
+                (
+                    BrushInput::Mouse(MouseButton::Right),
+                    Brush::Single("empty".to_string()),
+                ),
+                (
+                    BrushInput::Mouse(MouseButton::Middle),
+                    Brush::Single("light".to_string()),
+                ),
+                (
+                    BrushInput::Mouse(MouseButton::Back),
+                    Brush::Single("redglass".to_string()),
+                ),
+                (
+                    BrushInput::Mouse(MouseButton::Forward),
+                    Brush::Single("blueglass".to_string()),
+                ),
+            ]
+            .into_iter()
+            .collect(),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BrushInput {
+    Mouse(MouseButton),
+    Key(KeyCode),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Brush {
+    Single(String),
+    Random(Vec<String>),
+}
+impl Brush {
+    pub fn as_slice(&self) -> &[String] {
+        match self {
+            Self::Single(value) => std::slice::from_ref(value),
+            Self::Random(values) => values,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Value)]
+#[repr(C)]
+pub struct LoadedMaterial {
+    pub emissive: Vec3<f32>,
+    pub diffuse: Vec3<f32>,
+    pub opacity: Vec3<f32>,
+    pub display_emissive: Vec3<f32>,
+    pub display_diffuse: Vec3<f32>,
+    pub display_opacity: Vec3<f32>,
+}
+impl From<Material> for LoadedMaterial {
+    fn from(material: Material) -> Self {
+        // Cases:
+        // Has diffuse: Then probably is normal material. Opacity is display opacity is 1.0. Display_diffuse is diffuse.
+        // Has emissive: Probably is some sorta glowing thing. Opacity is 1.0. Display_diffuse is 1.0.
+        // Has opacity: Probably is some sorta transparent thing. Everything else is 0.
+        // Has display_emissive: Probably is background. Everything else is 0.
+        // Has display_diffuse: Probably is background. Everything else is 0.
+
+        let zero = Vec3::splat(0.0);
+        let one = Vec3::splat(1.0);
+
+        let emissive = material.emissive.as_vec3();
+        let diffuse = material.diffuse.as_vec3();
+        let opacity = material.opacity.as_vec3();
+        let display_emissive = material.display_emissive.as_vec3();
+        let display_diffuse = material.display_diffuse.as_vec3();
+        let display_opacity = material.display_opacity.as_vec3();
+
+        if let Some(diffuse) = diffuse {
+            let opacity = opacity.unwrap_or(one);
+            Self {
+                emissive: emissive.unwrap_or(zero),
+                diffuse,
+                opacity,
+                display_emissive: display_emissive.unwrap_or(zero),
+                display_diffuse: display_diffuse.unwrap_or(diffuse),
+                display_opacity: display_opacity.unwrap_or(opacity),
+            }
+        } else if let Some(emissive) = emissive {
+            let opacity = opacity.unwrap_or(one);
+            Self {
+                emissive,
+                diffuse: zero,
+                opacity,
+                display_emissive: display_emissive.unwrap_or(zero),
+                display_diffuse: display_diffuse.unwrap_or(one),
+                display_opacity: display_opacity.unwrap_or(opacity),
+            }
+        } else if let Some(opacity) = opacity {
+            Self {
+                emissive: zero,
+                diffuse: zero,
+                opacity,
+                display_emissive: display_emissive.unwrap_or(zero),
+                display_diffuse: display_diffuse.unwrap_or(one),
+                display_opacity: display_opacity.unwrap_or(opacity),
+            }
+        } else if let Some(display_emissive) = display_emissive {
+            Self {
+                emissive: zero,
+                diffuse: zero,
+                opacity: zero,
+                display_emissive,
+                display_diffuse: display_diffuse.unwrap_or(zero),
+                display_opacity: display_opacity.unwrap_or(zero),
+            }
+        } else if let Some(display_diffuse) = display_diffuse {
+            Self {
+                emissive: zero,
+                diffuse: zero,
+                opacity: zero,
+                display_emissive: zero,
+                display_diffuse,
+                display_opacity: display_opacity.unwrap_or(zero),
+            }
+        } else {
+            Self {
+                emissive: zero,
+                diffuse: zero,
+                opacity: zero,
+                display_emissive: zero,
+                display_diffuse: one,
+                display_opacity: display_opacity.unwrap_or(zero),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MaterialVector {
+    Repeat(f32),
+    Vector(FVec3),
+    #[default]
+    None,
+}
+impl MaterialVector {
+    pub fn as_vec3(&self) -> Option<Vec3<f32>> {
+        match self {
+            Self::Repeat(value) => Some(Vec3::splat(*value)),
+            Self::Vector(value) => Some((*value).into()),
+            Self::None => None,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Material {
-    pub emissive: FVec3,
-    pub diffuse: FVec3,
-    pub opacity: FVec3,
-    pub display_emissive: FVec3,
-    pub display_diffuse: FVec3,
-    pub display_opacity: FVec3,
+    pub emissive: MaterialVector,
+    pub diffuse: MaterialVector,
+    pub opacity: MaterialVector,
+    pub display_emissive: MaterialVector,
+    pub display_diffuse: MaterialVector,
+    pub display_opacity: MaterialVector,
 }
-impl Default for Material {
-    fn default() -> Self {
-        Self {
-            emissive: FVec3::splat(0.0),
-            diffuse: FVec3::splat(1.0),
-            opacity: FVec3::splat(0.0),
-            display_emissive: FVec3::splat(0.0),
-            display_diffuse: FVec3::splat(1.0),
-            display_opacity: FVec3::splat(0.0),
-        }
-    }
-}
-impl Material {
-    fn new(emissive: FVec3, diffuse: FVec3, opacity: FVec3) -> Self {
-        Self {
-            emissive,
-            diffuse,
-            opacity,
-            display_emissive: FVec3::ZERO,
-            display_diffuse: FVec3::splat(1.0),
-            display_opacity: opacity,
-        }
-    }
-}
+
+pub type Materials = HashMap<String, Material>;

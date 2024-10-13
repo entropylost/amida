@@ -20,6 +20,27 @@ pub fn pcg3d(v: Expr<Vec3<u32>>) -> Expr<Vec3<u32>> {
 }
 
 #[tracked]
+pub fn pcg(v: Expr<u32>) -> Expr<u32> {
+    let state = v * 747796405u32 + 2891336453u32;
+    let word = ((state >> ((state >> 28u32) + 4u32)) ^ state) * 277803737u32;
+    (word >> 22u32) ^ word
+}
+
+/*
+Taken from: https://www.shadertoy.com/view/tlcSzs
+
+vec3 LinearToSRGB ( vec3 col )
+{
+    return mix( col*12.92, 1.055*pow(col,vec3(1./2.4))-.055, step(.0031308,col) );
+}
+
+vec3 SRGBToLinear ( vec3 col )
+{
+    return mix( col/12.92, pow((col+.055)/1.055,vec3(2.4)), step(.04045,col) );
+}
+*/
+
+#[tracked]
 pub fn pcg3df(v: Expr<Vec3<u32>>) -> Expr<Vec3<f32>> {
     pcg3d(v).cast_f32() / u32::MAX as f32
 }

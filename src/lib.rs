@@ -9,7 +9,7 @@ use std::{
 
 use cascade::{CascadeSettings, CascadeSize, RayLocation, RayLocationComps};
 use color::{Diffuse, Opacity, Radiance};
-use data::{Material, Settings};
+use data::{BrushInput, LoadedMaterial, Materials, Settings};
 use glam::Vec3 as FVec3;
 use luisa::lang::types::vector::{Vec2, Vec3};
 use radiance::RadianceCascades;
@@ -23,6 +23,7 @@ use tiff::{
     ColorType,
 };
 use trace::{Block, BlockType, TraceWorld};
+use utils::pcg;
 use world::World;
 
 mod cascade;
@@ -95,6 +96,34 @@ pub fn main() {
             eprintln!("Could not load settings file, using default settings.");
             Default::default()
         });
+
+    let materials: Materials = File::open(settings.materials)
+        .map(ron::de::from_reader)
+        .map(Result::unwrap)
+        .unwrap_or_default();
+    let materials = materials.into_iter().collect::<Vec<_>>();
+    let material_indices = materials
+        .iter()
+        .enumerate()
+        .map(|(i, (name, _))| (name.clone(), i as u32))
+        .collect::<HashMap<_, _>>();
+    let materials_buffer =
+        DEVICE.create_buffer_from_fn(materials.len(), |i| LoadedMaterial::from(materials[i].1));
+    let mut brush_materials = vec![];
+    let mut brushes = HashMap::new();
+    for (input, brush) in &settings.brushes {
+        let materials = brush
+            .as_slice()
+            .iter()
+            .map(|name| material_indices[name])
+            .collect::<Vec<_>>();
+        brushes.insert(
+            *input,
+            (brush_materials.len() as u32, materials.len() as u32),
+        );
+        brush_materials.extend(materials);
+    }
+    let brush_materials_buffer = DEVICE.create_buffer_from_slice(&brush_materials);
 
     let grid_size = settings.world_size;
     let grid_dispatch = [grid_size[0], grid_size[1], 1];
@@ -299,29 +328,31 @@ pub fn main() {
     let mut total_runtime = vec![0.0; num_bounces + 1];
 
     #[rustfmt::skip]
-    let draw_kernel = DEVICE.create_kernel::<fn(Vec2<f32>, f32, bool, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>)>(
-        &track!(|pos, radius, square, emissive, diffuse, opacity, display_emissive, display_diffuse, display_opacity| {
+    let draw_kernel = DEVICE.create_kernel::<fn(Vec2<f32>, f32, bool, u32, u32)>(&track!(
+        |pos, radius, square, material_start, material_len| {
+            let material = materials_buffer.read(brush_materials_buffer.read(material_start + pcg((dispatch_id().x << 16) + dispatch_id().y) % material_len));
+
             let delta = dispatch_id().xy().cast_f32() - pos;
             if square.select(delta.abs().reduce_max(), delta.length()) <= radius {
-                world.emissive.write(dispatch_id().xy(), emissive);
-                world.diffuse.write(dispatch_id().xy(), diffuse);
-                world.opacity.write(dispatch_id().xy(), opacity);
-                world.display_emissive.write(dispatch_id().xy(), display_emissive);
-                world.display_diffuse.write(dispatch_id().xy(), display_diffuse);
-                world.display_opacity.write(dispatch_id().xy(), display_opacity);
+                world.emissive.write(dispatch_id().xy(), material.emissive);
+                world.diffuse.write(dispatch_id().xy(), material.diffuse);
+                world.opacity.write(dispatch_id().xy(), material.opacity);
+                world.display_emissive.write(dispatch_id().xy(), material.display_emissive);
+                world.display_diffuse.write(dispatch_id().xy(), material.display_diffuse);
+                world.display_opacity.write(dispatch_id().xy(), material.display_opacity);
             }
-        }),
-    );
+        }
+    ));
 
     #[rustfmt::skip]
-    let draw = |pos: Vec2<f32>, r: f32, sq: bool, m: &Material| {
+    let draw = |pos: Vec2<f32>, r: f32, sq: bool, brush: (u32, u32)| {
         draw_kernel.dispatch(
             grid_dispatch,
             &pos,
             &r,
             &sq,
-            &Vec3::from(m.emissive), &Vec3::from(m.diffuse), &Vec3::from(m.opacity),
-            &Vec3::from(m.display_emissive), &Vec3::from(m.display_diffuse), &Vec3::from(m.display_opacity),
+            &brush.0,
+            &brush.1,
         );
     };
 
@@ -404,17 +435,21 @@ pub fn main() {
                 println!("Running");
             }
         } else {
-            for (key, material) in &settings.key_materials {
-                if rt.pressed_key(*key) {
-                    let pos = rt.cursor_position;
-                    draw(pos, brush_radius, draw_square, material);
+            for (&input, &brush) in &brushes {
+                match input {
+                    BrushInput::Key(key) => {
+                        if rt.just_pressed_key(key) {
+                            let pos = rt.cursor_position;
+                            draw(pos, brush_radius, draw_square, brush);
+                        }
+                    }
+                    BrushInput::Mouse(button) => {
+                        if rt.pressed_button(button) {
+                            let pos = rt.cursor_position;
+                            draw(pos, brush_radius, draw_square, brush);
+                        }
+                    }
                 }
-            }
-        }
-        for (button, material) in &settings.mouse_materials {
-            if rt.pressed_button(*button) {
-                let pos = rt.cursor_position;
-                draw(pos, brush_radius, draw_square, material);
             }
         }
 
