@@ -254,23 +254,32 @@ pub fn main() {
         BlockType::write(&difference.view(0), dispatch_id().xy(), **block);
     }));
 
-    let display_kernel = DEVICE.create_kernel::<fn(bool)>(&track!(|show_diff| {
-        app.display().write(
-            dispatch_id().xy(),
-            radiance.read(dispatch_id().xy())
-                + if show_diff {
-                    let block =
-                        BlockType::read(&difference.view(0), dispatch_id().xy() / BlockType::SIZE);
-                    BlockType::get(block, dispatch_id().xy() % BlockType::SIZE)
-                        .cast_u32()
-                        .cast_f32()
-                        * 5.0
-                        + (!BlockType::is_empty(block)).cast_u32().cast_f32() * 1.0
-                } else {
-                    0.0_f32.expr()
-                },
-        );
-    }));
+    let display_kernel = DEVICE.create_kernel::<fn(bool, Vec2<f32>, f32, bool)>(&track!(
+        |show_diff, cursor_pos, radius, square| {
+            let pixel = dispatch_id().xy();
+            let delta = pixel.cast_f32() - cursor_pos;
+            let dist = square.select(delta.abs().reduce_max(), delta.length());
+            app.display().write(
+                pixel,
+                radiance.read(pixel)
+                    + if show_diff {
+                        let block = BlockType::read(&difference.view(0), pixel / BlockType::SIZE);
+                        BlockType::get(block, pixel % BlockType::SIZE)
+                            .cast_u32()
+                            .cast_f32()
+                            * 5.0
+                            + (!BlockType::is_empty(block)).cast_u32().cast_f32() * 1.0
+                    } else {
+                        0.0_f32.expr()
+                    }
+                    + if dist <= radius && dist > radius - 1.0 {
+                        1.0_f32.expr()
+                    } else {
+                        0.0_f32.expr()
+                    },
+            );
+        }
+    ));
 
     let mut merge_variant = settings.merge_variant;
     let mut num_bounces = settings.num_bounces;
@@ -280,6 +289,7 @@ pub fn main() {
     let mut raw_radiance = settings.raw_radiance;
     let mut display_level = settings.display_level;
     let mut brush_radius = settings.brush_radius;
+    let mut draw_square = settings.draw_square;
 
     let mut t = 0;
 
@@ -289,9 +299,10 @@ pub fn main() {
     let mut total_runtime = vec![0.0; num_bounces + 1];
 
     #[rustfmt::skip]
-    let draw_kernel = DEVICE.create_kernel::<fn(Vec2<f32>, f32, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>)>(
-        &track!(|pos, radius, emissive, diffuse, opacity, display_emissive, display_diffuse, display_opacity| {
-            if (dispatch_id().xy().cast_f32() - pos).abs().reduce_max() < radius {
+    let draw_kernel = DEVICE.create_kernel::<fn(Vec2<f32>, f32, bool, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>, Vec3<f32>)>(
+        &track!(|pos, radius, square, emissive, diffuse, opacity, display_emissive, display_diffuse, display_opacity| {
+            let delta = dispatch_id().xy().cast_f32() - pos;
+            if square.select(delta.abs().reduce_max(), delta.length()) <= radius {
                 world.emissive.write(dispatch_id().xy(), emissive);
                 world.diffuse.write(dispatch_id().xy(), diffuse);
                 world.opacity.write(dispatch_id().xy(), opacity);
@@ -303,11 +314,12 @@ pub fn main() {
     );
 
     #[rustfmt::skip]
-    let draw = |pos: Vec2<f32>, r: f32, m: &Material| {
+    let draw = |pos: Vec2<f32>, r: f32, sq: bool, m: &Material| {
         draw_kernel.dispatch(
             grid_dispatch,
             &pos,
             &r,
+            &sq,
             &Vec3::from(m.emissive), &Vec3::from(m.diffuse), &Vec3::from(m.opacity),
             &Vec3::from(m.display_emissive), &Vec3::from(m.display_diffuse), &Vec3::from(m.display_opacity),
         );
@@ -315,7 +327,13 @@ pub fn main() {
 
     app.run(|rt, scope| {
         display_kernel
-            .dispatch_async(grid_dispatch, &show_diff)
+            .dispatch_async(
+                grid_dispatch,
+                &show_diff,
+                &rt.cursor_position,
+                &brush_radius,
+                &draw_square,
+            )
             .debug("Display")
             .execute_in(&scope);
 
@@ -334,6 +352,9 @@ pub fn main() {
         if rt.just_pressed_key(KeyCode::Enter) {
             merge_variant = (merge_variant + 1) % radiance_cascades.merge_kernel_count();
             println!("Merge variant: {}", merge_variant);
+        } else if rt.just_pressed_key(KeyCode::KeyQ) {
+            draw_square = !draw_square;
+            println!("Draw square: {}", draw_square);
         } else if rt.just_pressed_key(KeyCode::KeyE) {
             display_level = (display_level + 1) % cascades.num_cascades;
             println!("Display level: {}", display_level);
@@ -386,14 +407,14 @@ pub fn main() {
             for (key, material) in &settings.key_materials {
                 if rt.pressed_key(*key) {
                     let pos = rt.cursor_position;
-                    draw(pos, brush_radius, material);
+                    draw(pos, brush_radius, draw_square, material);
                 }
             }
         }
         for (button, material) in &settings.mouse_materials {
             if rt.pressed_button(*button) {
                 let pos = rt.cursor_position;
-                draw(pos, brush_radius, material);
+                draw(pos, brush_radius, draw_square, material);
             }
         }
 

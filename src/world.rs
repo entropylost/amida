@@ -55,7 +55,7 @@ impl World {
         let mut file = TiffDecoder::new(file).unwrap();
 
         let mut load = |name: &str, texture: &Tex2d<Radiance>| {
-            assert_eq!(&file.get_tag_ascii_string(PAGENAME).unwrap(), name);
+            // assert_eq!(&file.get_tag_ascii_string(PAGENAME).unwrap(), name);
             assert_eq!(file.colortype().unwrap(), ColorType::RGB(32));
             assert_eq!(file.dimensions().unwrap(), (self.width(), self.height()));
             let image = file.read_image().unwrap();

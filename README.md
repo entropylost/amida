@@ -19,6 +19,7 @@ Note that any arguments not provided will be loaded from the default files in th
   - Forward: Transparent red wall
   - Backward: Transparent blue wall
 - Scroll wheel: Change the radius of the brush.
+- Q: Draw using a square brush.
 - Enter: Change the merging variant. Options:
   - 0: Stochastic bilinear
   - 1: Nearest

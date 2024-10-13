@@ -1,3 +1,22 @@
+// TODO: Move materials to separate file list. Then allow for randomized material brush.
+// Also, palettization program.
+// Also also: Import from rgb8 as well, probably using srgb transform.
+// Maybe a way of loading from 6 images?
+// Also make the world size be based on the input image instead of requiring syncing.
+/*
+Taken from: https://www.shadertoy.com/view/tlcSzs
+
+vec3 LinearToSRGB ( vec3 col )
+{
+    return mix( col*12.92, 1.055*pow(col,vec3(1./2.4))-.055, step(.0031308,col) );
+}
+
+vec3 SRGBToLinear ( vec3 col )
+{
+    return mix( col/12.92, pow((col+.055)/1.055,vec3(2.4)), step(.04045,col) );
+}
+*/
+
 use radiance::TuningSettings;
 
 use super::*;
@@ -20,6 +39,7 @@ pub struct Settings {
     pub raw_radiance: bool,
     pub display_level: u32,
     pub brush_radius: f32,
+    pub draw_square: bool,
     pub mouse_materials: HashMap<MouseButton, Material>,
     pub key_materials: HashMap<KeyCode, Material>,
 }
@@ -77,6 +97,7 @@ impl Default for Settings {
             raw_radiance: false,
             display_level: 0,
             brush_radius: 5.0,
+            draw_square: false,
             #[rustfmt::skip]
             mouse_materials: [
                 (MouseButton::Left, Material::new(FVec3::splat(0.0), FVec3::splat(1.0), FVec3::splat(1000.0))),
