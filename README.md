@@ -33,7 +33,7 @@ Note that any arguments not provided will be loaded from the default files in th
 - R: Show the raw radiance map (because some environments may not have the background be white).
 - F: Show the bounce lighting.
 
-The .tiff files can be edited using GIMP - although when exporting, all metadata should be removed. All layers use linear RGB. The layers are:
+The .tiff files can be edited using GIMP or Krita - although when exporting, all metadata should be removed. All layers use linear RGB. The layers are:
 
 - `emissive`: The amount of light emitted by pixels. Can be set greater than 1.
 - `diffuse`: The diffuse color, used for bouncing. Note that diffuse bouncing is completely rotationally-symmetric, so approximately half of the light will be bounced *into* the object.
@@ -41,6 +41,14 @@ The .tiff files can be edited using GIMP - although when exporting, all metadata
 - `display_emissive`: The amount of added color to the final image.
 - `display_diffuse`: The amount of the radiance added to the final image.
 - `display_opacity`: The opacity in the final bounce. This is split from `opacity` to allow for light bleeding effects.
+
+This program also supports creating a world from an input image with a palette mapping:
+
+```
+> ./amida.exe world/paletteload-example.tiff env/default.tiff settings/default.tiff paletteload-example.ron
+```
+
+Will lookup the colors in the image using the mapping in [`paletteload-example.ron`](./paletteload-example.ron)
 
 ## Known Bugs
 

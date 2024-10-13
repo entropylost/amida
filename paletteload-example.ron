@@ -1,0 +1,5 @@
+{
+    "#FFF": ["wall1", "wall2"],
+    "#FF0": "light",
+    "#000": "empty",
+}
