@@ -3,8 +3,19 @@ use glam::Vec3 as FVec3;
 use std::f32::consts::TAU;
 
 fn skylight(angle: f32) -> FVec3 {
+    // Default:
     let sky_color = FVec3::new(0.3, 0.7, 1.0);
-    let sun_color = FVec3::new(1.0, 1.0, 0.8) * 3.0;
+    let sun_color = FVec3::new(1.0, 1.0, 0.8) * 5.0;
+    // Night:
+    // let sky_color = FVec3::new(0.2, 0.15, 0.6) * 0.3;
+    // let sun_color = FVec3::new(1.0, 0.3, 0.1) * 0.0;
+    // Desert:
+    // let sky_color = FVec3::new(0.6, 0.7, 1.0);
+    // let sun_color = FVec3::new(1.0, 0.9, 0.4) * 4.0;
+    // Golden:
+    // let sky_color = FVec3::new(0.6, 0.5, 0.7);
+    // let sun_color = FVec3::new(1.0, 0.8, 0.2) * 4.0;
+
     let sun_size = 0.3;
     let sun_angle = 1.0;
 
