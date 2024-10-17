@@ -1,0 +1,6 @@
+{
+    "#000": ["wall1", "wall2", "wall3"],
+    "#002dff": "light2",
+    "#ff0000": "redglass",
+    "#FFF": "empty",
+}

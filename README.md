@@ -32,6 +32,7 @@ Note that any arguments not provided will be loaded from the default files in th
 - E: Change the displayed cascade level.
 - R: Show the raw radiance map (because some environments may not have the background be white).
 - F: Show the bounce lighting.
+- Esc: Close the program.
 
 The .tiff files can be edited using GIMP or Krita - although when exporting, all metadata should be removed. All layers use linear RGB. The layers are:
 
@@ -45,16 +46,18 @@ The .tiff files can be edited using GIMP or Krita - although when exporting, all
 This program also supports creating a world from an input image with a palette mapping:
 
 ```
-> ./amida.exe world/paletteload-example.tiff env/default.tiff settings/default.tiff paletteload-example.ron
+> ./amida.exe world/room.png env/default.tiff settings/default.tiff room-palette.ron
 ```
 
-Will lookup the colors in the image using the mapping in [`paletteload-example.ron`](./paletteload-example.ron)
+Will lookup the colors in the image using the mapping in [`room-palette.ron`](./room-palette.ron)
 
 ## Known Bugs
 
 - The dpi scaling is broken and has to be manually adjusted. Use the `settings/dpi2.ron` file when having a 2x scaling.
 
 ## Gallery
+
+![Room](images/room2.png)
 
 ![Sir, this is a RADIANCE CASCADES discord server](images/thisisradiancecascades.png)
 

@@ -21,4 +21,7 @@
     "light": (
         emissive: 5.0,
     ),
+    "light2": (
+        emissive: 10.0,
+    )
 }

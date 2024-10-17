@@ -429,7 +429,7 @@ pub fn main() {
                 path.set_file_name(file_name);
             }
             world.save(&path);
-            println!("Saved to {:?}", path);
+            println!("Saved to {}", path.display());
         } else if rt.just_pressed_key(KeyCode::KeyL) {
             world.load(&world_file_name);
             println!("Loaded");
