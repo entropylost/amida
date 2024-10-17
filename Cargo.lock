@@ -613,6 +613,7 @@ dependencies = [
 [[package]]
 name = "cuda_device_sys"
 version = "0.1.0"
+source = "git+https://github.com/entropylost/sefirot#6519fe96488dec5024291eecd7df41bc6e6fb2c5"
 dependencies = [
  "bindgen 0.69.4",
 ]
@@ -981,6 +982,7 @@ dependencies = [
 [[package]]
 name = "id_newtype"
 version = "0.1.0"
+source = "git+https://github.com/entropylost/sefirot#6519fe96488dec5024291eecd7df41bc6e6fb2c5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2141,6 +2143,7 @@ dependencies = [
 [[package]]
 name = "sefirot"
 version = "0.1.0"
+source = "git+https://github.com/entropylost/sefirot#6519fe96488dec5024291eecd7df41bc6e6fb2c5"
 dependencies = [
  "cuda_device_sys",
  "dashmap",
@@ -2162,6 +2165,7 @@ dependencies = [
 [[package]]
 name = "sefirot_macro"
 version = "0.1.0"
+source = "git+https://github.com/entropylost/sefirot#6519fe96488dec5024291eecd7df41bc6e6fb2c5"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -2172,6 +2176,7 @@ dependencies = [
 [[package]]
 name = "sefirot_testbed"
 version = "0.1.0"
+source = "git+https://github.com/entropylost/sefirot#6519fe96488dec5024291eecd7df41bc6e6fb2c5"
 dependencies = [
  "ndarray",
  "sefirot",
