@@ -1,8 +1,10 @@
 # Amida: 2D Lighting using Radiance Cascades
 
-This program implements 2d lighting using the [radiance cascades](https://radiance-cascades.com/) algorithm by Alexander Sannikov, using the bilinear fix to prevent ringing. It also supports multiple bounces using subsurface scattering and volumetrics.
+This program implements 2d lighting using the [Radiance Cascades](https://radiance-cascades.com/) algorithm by Alexander Sannikov, using the bilinear fix to prevent ringing. It also supports multiple bounces using subsurface scattering and volumetrics.
 
 ## Usage
+
+Note: This program requires a NVIDIA graphics card due to using CUDA.
 
 Download the [latest release](https://github.com/entropylost/amida/releases/), or compile the program yourself by installing [Rust](https://www.rust-lang.org/), and executing `cargo run`, then call the program:
 

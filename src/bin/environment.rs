@@ -4,8 +4,8 @@ use std::f32::consts::TAU;
 
 fn skylight(angle: f32) -> FVec3 {
     // Default:
-    // let sky_color = FVec3::new(0.3, 0.7, 1.0) * 4.0;
-    // let sun_color = FVec3::new(1.0, 1.0, 0.8) * 10.0;
+    let sky_color = FVec3::new(0.3, 0.7, 1.0) * 4.0;
+    let sun_color = FVec3::new(1.0, 1.0, 0.8) * 10.0;
     // Sunset:
     // let sky_color = FVec3::new(0.2, 0.15, 0.4) * 2.0;
     // let sun_color = FVec3::new(1.0, 0.3, 0.1) * 3.0;

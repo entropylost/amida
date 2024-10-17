@@ -60,7 +60,7 @@ checksum = "4aa90d7ce82d4be67b64039a3d588d38dbcc6736577de4a847025ce5b0c468d1"
 
 [[package]]
 name = "amida"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "csscolorparser",
  "glam",
