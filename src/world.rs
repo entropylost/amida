@@ -197,7 +197,9 @@ impl World {
             let data = image
                 .enumerate_pixels()
                 .flat_map(|(i, j, x)| {
-                    let brush = &palette[&x.0];
+                    let brush = palette.get(&x.0).unwrap_or_else(|| {
+                        panic!("Color not found: {:?}", x.0);
+                    });
                     let material = brush[pcg_host((i << 16) + j) as usize % brush.len()];
                     <[f32; 3]>::from(f(&materials[material as usize].1))
                 })

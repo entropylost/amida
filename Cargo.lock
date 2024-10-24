@@ -613,7 +613,7 @@ dependencies = [
 [[package]]
 name = "cuda_device_sys"
 version = "0.1.0"
-source = "git+https://github.com/entropylost/sefirot#6519fe96488dec5024291eecd7df41bc6e6fb2c5"
+source = "git+https://github.com/entropylost/sefirot#40c5515c632b5a8f35a0ee38b2432e7d2add040d"
 dependencies = [
  "bindgen 0.69.4",
 ]
@@ -982,7 +982,7 @@ dependencies = [
 [[package]]
 name = "id_newtype"
 version = "0.1.0"
-source = "git+https://github.com/entropylost/sefirot#6519fe96488dec5024291eecd7df41bc6e6fb2c5"
+source = "git+https://github.com/entropylost/sefirot#40c5515c632b5a8f35a0ee38b2432e7d2add040d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1252,7 +1252,7 @@ dependencies = [
 [[package]]
 name = "luisa_compute"
 version = "0.1.1-alpha.1"
-source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#8467ff0627c7711d189546080c135fd8e512aefd"
+source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#eb26b150b9ac54ed06b712886023410b1ea4e521"
 dependencies = [
  "bumpalo",
  "env_logger",
@@ -1279,7 +1279,7 @@ dependencies = [
 [[package]]
 name = "luisa_compute_api_types"
 version = "0.1.1-alpha.1"
-source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#8467ff0627c7711d189546080c135fd8e512aefd"
+source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#eb26b150b9ac54ed06b712886023410b1ea4e521"
 dependencies = [
  "bitflags 2.6.0",
  "cbindgen",
@@ -1289,7 +1289,7 @@ dependencies = [
 [[package]]
 name = "luisa_compute_backend"
 version = "0.1.1-alpha.1"
-source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#8467ff0627c7711d189546080c135fd8e512aefd"
+source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#eb26b150b9ac54ed06b712886023410b1ea4e521"
 dependencies = [
  "lazy_static",
  "libc",
@@ -1305,7 +1305,7 @@ dependencies = [
 [[package]]
 name = "luisa_compute_derive"
 version = "0.1.1-alpha.1"
-source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#8467ff0627c7711d189546080c135fd8e512aefd"
+source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#eb26b150b9ac54ed06b712886023410b1ea4e521"
 dependencies = [
  "luisa_compute_derive_impl",
  "syn 2.0.77",
@@ -1314,7 +1314,7 @@ dependencies = [
 [[package]]
 name = "luisa_compute_derive_impl"
 version = "0.1.1-alpha.1"
-source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#8467ff0627c7711d189546080c135fd8e512aefd"
+source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#eb26b150b9ac54ed06b712886023410b1ea4e521"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -1325,7 +1325,7 @@ dependencies = [
 [[package]]
 name = "luisa_compute_ir"
 version = "0.1.1-alpha.1"
-source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#8467ff0627c7711d189546080c135fd8e512aefd"
+source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#eb26b150b9ac54ed06b712886023410b1ea4e521"
 dependencies = [
  "base64ct",
  "bincode",
@@ -1347,7 +1347,7 @@ dependencies = [
 [[package]]
 name = "luisa_compute_sys"
 version = "0.1.1-alpha.1"
-source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#8467ff0627c7711d189546080c135fd8e512aefd"
+source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#eb26b150b9ac54ed06b712886023410b1ea4e521"
 dependencies = [
  "cmake",
 ]
@@ -1355,7 +1355,7 @@ dependencies = [
 [[package]]
 name = "luisa_compute_track"
 version = "0.1.1-alpha.1"
-source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#8467ff0627c7711d189546080c135fd8e512aefd"
+source = "git+https://github.com/entropylost/luisa-compute-rs?branch=nocpu#eb26b150b9ac54ed06b712886023410b1ea4e521"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -2143,7 +2143,7 @@ dependencies = [
 [[package]]
 name = "sefirot"
 version = "0.1.0"
-source = "git+https://github.com/entropylost/sefirot#6519fe96488dec5024291eecd7df41bc6e6fb2c5"
+source = "git+https://github.com/entropylost/sefirot#40c5515c632b5a8f35a0ee38b2432e7d2add040d"
 dependencies = [
  "cuda_device_sys",
  "dashmap",
@@ -2165,7 +2165,7 @@ dependencies = [
 [[package]]
 name = "sefirot_macro"
 version = "0.1.0"
-source = "git+https://github.com/entropylost/sefirot#6519fe96488dec5024291eecd7df41bc6e6fb2c5"
+source = "git+https://github.com/entropylost/sefirot#40c5515c632b5a8f35a0ee38b2432e7d2add040d"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -2176,7 +2176,7 @@ dependencies = [
 [[package]]
 name = "sefirot_testbed"
 version = "0.1.0"
-source = "git+https://github.com/entropylost/sefirot#6519fe96488dec5024291eecd7df41bc6e6fb2c5"
+source = "git+https://github.com/entropylost/sefirot#40c5515c632b5a8f35a0ee38b2432e7d2add040d"
 dependencies = [
  "ndarray",
  "sefirot",

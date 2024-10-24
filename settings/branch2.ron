@@ -1,0 +1,20 @@
+(
+    pixel_size: 4,
+    dpi: 2.0,
+    cascades: (
+        base_interval: (0.0, 1.0),  // (0.0, 10.0)
+        base_probe_spacing: 1.0,
+        base_size: (
+            probes: (512, 512),
+            facings: 4, // 16
+        ),
+        num_cascades: 12,
+        spatial_factor: 1,
+        angular_factor: 1,
+    ),
+    display_tuning: (
+        block_sizes: {
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]: (4, 4, 4)
+        }
+    )
+)

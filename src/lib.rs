@@ -141,7 +141,7 @@ pub fn main() {
 
     let app = App::new("Amida", grid_size)
         .scale(settings.pixel_size)
-        .dpi_override(settings.dpi)
+        .dpi(settings.dpi)
         .agx()
         .init();
 
