@@ -15,10 +15,7 @@ fn color(time: Expr<u32>) -> Expr<Vec3<f32>> {
 }
 
 fn main() {
-    let app = App::new("Order test", [512, 512])
-        .scale(4)
-        .dpi_override(2.0)
-        .init();
+    let app = App::new("Order test", [512, 512]).scale(4).dpi(2.0).init();
 
     let block_dim = 512_u32 / 8;
 
