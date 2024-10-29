@@ -6,6 +6,7 @@ use trace::trace_radiance;
 use utils::pcg3df;
 
 mod bilinear_fix;
+mod diagonal;
 mod nearest;
 mod single_stochastic;
 
@@ -91,6 +92,11 @@ impl RadianceCascades {
                 function: bilinear_fix::merge,
                 dispatch_scaling: [4, 1, 1],
                 min_block_size: [16, 1, 1],
+            },
+            MergeFunction {
+                function: diagonal::merge,
+                dispatch_scaling: [2, 1, 1],
+                min_block_size: [8, 1, 1],
             },
         ];
 

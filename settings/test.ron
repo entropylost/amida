@@ -7,5 +7,16 @@
         Mouse(Middle): "light",
         Mouse(Back): "redglass",
         Mouse(Forward): "blueglass",
-    }
+    },
+    // cascades: (
+    //     base_interval: (0.0, 4.0),
+    //     base_probe_spacing: 1.0,
+    //     base_size: (
+    //         probes: (512, 512),
+    //         facings: 16
+    //     ),
+    //     num_cascades: 6,
+    //     spatial_factor: 1,
+    //     angular_factor: 2,
+    // ),
 )

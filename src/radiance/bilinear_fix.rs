@@ -27,35 +27,32 @@ pub fn merge(
     let samples = settings.bilinear_samples(probe, next_level);
 
     let (next_probe, weight) = samples.sample(probe_offset);
-    let out_radiance = if (next_probe >= settings.level_size_expr(next_level).probes).any() {
-        Vec3::splat_expr(0.0)
+    let next_probe = luisa::min(next_probe, settings.level_size_expr(next_level).probes - 1);
+    let next_probe_pos = settings.probe_location(next_probe, next_level);
+    let ray_start = probe_pos + ray_dir * interval.x;
+    let ray_end = next_probe_pos + ray_dir * interval.y;
+
+    let ray_fluence = trace_radiance(
+        world,
+        ray_start,
+        (ray_end - ray_start).normalize(),
+        Vec2::expr(0.0, (ray_end - ray_start).length()),
+    );
+
+    let next_ray = RayLocation::from_comps_expr(RayLocationComps {
+        probe: next_probe,
+        facing,
+        level: next_level,
+    });
+
+    let next_radiance = if next_level < settings.num_cascades {
+        radiance.read(next_ray)
     } else {
-        let next_probe_pos = settings.probe_location(next_probe, next_level);
-        let ray_start = probe_pos + ray_dir * interval.x;
-        let ray_end = next_probe_pos + ray_dir * interval.y;
-
-        let ray_fluence = trace_radiance(
-            world,
-            ray_start,
-            (ray_end - ray_start).normalize(),
-            Vec2::expr(0.0, (ray_end - ray_start).length()),
-        );
-
-        let next_ray = RayLocation::from_comps_expr(RayLocationComps {
-            probe: next_probe,
-            facing,
-            level: next_level,
-        });
-
-        let next_radiance = if next_level < settings.num_cascades {
-            radiance.read(next_ray)
-        } else {
-            world.environment.read(facing)
-        };
-
-        let merged_radiance = ray_fluence.over_color(next_radiance);
-        merged_radiance * weight
+        world.environment.read(facing)
     };
+
+    let merged_radiance = ray_fluence.over_color(next_radiance);
+    let out_radiance = merged_radiance * weight;
 
     let radiance_shared = Shared::<Radiance>::new(block_size().iter().product::<u32>() as usize);
     let radiance_shared_2 =

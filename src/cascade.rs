@@ -190,4 +190,62 @@ impl BilinearSamplesExpr {
         .expr();
         (indices[index] + self.base_index, weights[index])
     }
+    #[tracked]
+    pub fn sample2(&self, index: Expr<u32>) -> (Expr<Vec2<u32>>, Expr<f32>) {
+        let fract = self.fract;
+
+        let a = (fract.x + fract.y) / 2.0;
+        let b = (1.0 - fract.x + fract.y) / 2.0;
+
+        // bayer
+        // let flip = (fract.x > 0.5) != (fract.y > 0.5);
+        // let weights = <[_; 4]>::from_elems_expr([
+        //     a,
+        //     1.0 - a,
+        //     b,
+        //     1.0 - b,
+        // ]);
+
+        // cross hatches
+        let flip = (fract.x > 0.5) == (fract.y > 0.5);
+        let weights = <[_; 4]>::from_elems_expr([b, 1.0 - b, 1.0 - a, a]);
+
+        // horizontal dither
+        // let flip = (fract.x > 0.5) == (fract.y > 0.5);
+        // let weights = <[_; 4]>::from_elems_expr([
+        //     b,
+        //     1.0 - b,
+        //     a,
+        //     1.0 - a,
+        // ]);
+
+        // vertical dither
+        // let flip = (fract.x > 0.5) == (fract.y > 0.5);
+        // let weights = <[_; 4]>::from_elems_expr([
+        //     1.0 - b,
+        //     b,
+        //     1.0 - a,
+        //     a,
+        // ]);
+
+        // Normal
+        // let flip = (fract.x > 0.5) == (fract.y > 0.5);
+        // let weights = <[_; 4]>::from_elems_expr([
+        //     b,
+        //     1.0 - b,
+        //     a,
+        //     1.0 - a,
+        // ]);
+        let indices = [
+            Vec2::new(0, 0),
+            Vec2::new(1, 1),
+            Vec2::new(1, 0),
+            Vec2::new(0, 1),
+        ]
+        .expr();
+        (
+            indices[index + 2 * flip.cast_u32()] + self.base_index,
+            weights[index + 2 * flip.cast_u32()],
+        )
+    }
 }
