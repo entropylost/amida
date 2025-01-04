@@ -129,7 +129,7 @@ impl<B: Block> TraceWorld<B> {
 const TRANSMITTANCE_CUTOFF: f32 = 0.001;
 
 fn intersect_intervals(a: Expr<Interval>, b: Expr<Interval>) -> Expr<Interval> {
-    Vec2::expr(luisa::max(a.x, b.x), luisa::min(a.y, b.y))
+    Vec2::expr(keter::max(a.x, b.x), keter::min(a.y, b.y))
 }
 
 #[tracked]
@@ -141,8 +141,8 @@ fn aabb_intersect(
 ) -> Expr<Interval> {
     let t0 = (aabb_min - start) * inv_dir;
     let t1 = (aabb_max - start) * inv_dir;
-    let tmin = luisa::min(t0, t1).reduce_max();
-    let tmax = luisa::max(t0, t1).reduce_min();
+    let tmin = keter::min(t0, t1).reduce_max();
+    let tmax = keter::max(t0, t1).reduce_min();
     Vec2::expr(tmin, tmax)
 }
 
@@ -224,7 +224,7 @@ fn trace_radiance_multilevel_while<B: Block>(
                 }
 
                 if B::get(block, pos % B::SIZE) || next_t >= interval_size {
-                    let segment_size = luisa::min(next_t, interval_size) - last_t;
+                    let segment_size = keter::min(next_t, interval_size) - last_t;
                     let radiance = world.radiance.read(pos);
                     let opacity = world.opacity.read(pos);
                     *fluence = fluence.over(
@@ -363,7 +363,7 @@ fn trace_radiance_simple<B: Block>(
 
             if B::get(B::read(&world.diff, pos / B::SIZE), pos % B::SIZE) || next_t >= interval_size
             {
-                let segment_size = luisa::min(next_t, interval_size) - last_t;
+                let segment_size = keter::min(next_t, interval_size) - last_t;
                 let radiance = world.radiance.read(pos);
                 let opacity = world.opacity.read(pos);
                 *fluence = fluence.over(

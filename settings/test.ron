@@ -1,22 +1,23 @@
 (
+    world_size: (512, 512),
     pixel_size: 4,
     dpi: 2.0,
     brushes: {
         Mouse(Left): ["wall1", "wall2", "wall3"],
         Mouse(Right): "empty",
-        Mouse(Middle): "light",
-        Mouse(Back): "redglass",
-        Mouse(Forward): "blueglass",
+        Mouse(Middle): "redglass",
+        Mouse(Back): "sun",
+        Mouse(Forward): "moon",
     },
-    // cascades: (
-    //     base_interval: (0.0, 4.0),
-    //     base_probe_spacing: 1.0,
-    //     base_size: (
-    //         probes: (512, 512),
-    //         facings: 16
-    //     ),
-    //     num_cascades: 6,
-    //     spatial_factor: 1,
-    //     angular_factor: 2,
-    // ),
+    cascades: (
+        base_interval: (0.0, 4.0),
+        base_probe_spacing: 1.0,
+        base_size: (
+            probes: (512, 512),
+            facings: 16
+        ),
+        num_cascades: 5,
+        spatial_factor: 1,
+        angular_factor: 2,
+    ),
 )

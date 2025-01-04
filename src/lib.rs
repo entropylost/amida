@@ -11,10 +11,11 @@ use cascade::{CascadeSettings, CascadeSize, RayLocation, RayLocationComps};
 use color::{Diffuse, Opacity, Radiance};
 use data::{BrushInput, LoadedMaterial, Materials, Palette, Settings};
 use glam::Vec3 as FVec3;
-use luisa::lang::types::vector::{Vec2, Vec3};
+use keter::lang::types::vector::{Vec2, Vec3};
+use keter::prelude::*;
+use keter_testbed::{App, KeyCode, MouseButton};
 use radiance::RadianceCascades;
-use sefirot::prelude::*;
-use sefirot_testbed::{App, KeyCode, MouseButton};
+use scene::{Brush, Draw, Scene, SceneColor};
 use serde::{Deserialize, Serialize};
 use tiff::{
     decoder::{Decoder as TiffDecoder, DecodingResult},
@@ -30,6 +31,7 @@ mod cascade;
 mod color;
 mod data;
 mod radiance;
+mod scene;
 mod trace;
 mod utils;
 mod world;
@@ -350,6 +352,92 @@ pub fn main() {
         }
     ));
 
+    let rect_brush = DEVICE.create_kernel::<fn(Vec2<f32>, Vec2<f32>, SceneColor)>(&track!(
+        |center, size, color| {
+            let pos = dispatch_id().xy();
+            if ((pos.cast_f32() + 0.5 - center).abs() < size).all() {
+                world.emissive.write(pos, color.emission);
+                world.display_opacity.write(pos, color.opacity);
+            }
+        }
+    ));
+    let circle_brush =
+        DEVICE.create_kernel::<fn(Vec2<f32>, f32, SceneColor)>(&track!(|center, radius, color| {
+            let pos = dispatch_id().xy();
+            if (pos.cast_f32() + 0.5 - center).length() < radius {
+                world.emissive.write(pos, color.emission);
+                world.display_opacity.write(pos, color.opacity);
+            }
+        }));
+
+    let julia = DEVICE.create_kernel::<fn()>(&track!(|| {
+        let c = Vec2::<f32>::new(-0.835, -0.2321);
+        let r = 2.0;
+        assert!(r * r - r >= (c.x * c.x + c.y * c.y).sqrt());
+
+        let pos = dispatch_id().xy().cast_f32() + 0.5;
+        let pos = 2.0 * ((pos / dispatch_size().xy().cast_f32()) - Vec2::expr(0.5, 0.5)) * r * 0.7;
+        let z = pos.var();
+
+        let iter = u32::MAX.var();
+        for i in 0_u32..1000 {
+            *z = Vec2::expr(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+            if z.length() > r {
+                *iter = i;
+                break;
+            }
+        }
+        let color = if iter > 30 {
+            let iter = keter::min(iter, 1000);
+            let k = iter.cast_f32() / 500.0;
+            let j = iter.cast_f32() / 60.0;
+            SceneColor::expr(
+                Vec3::<f32>::expr(0.1 * j, 0.0, 0.0),
+                Vec3::<f32>::splat_expr(0.3),
+            )
+        } else {
+            let k = keter::max(iter.cast_f32() - 200.0, 0.0) / 500.0;
+            let j = iter.cast_f32() / 30.0;
+            let l = if iter % 2 == 0 {
+                1.0_f32.expr()
+            } else {
+                0.0.expr()
+            };
+            SceneColor::expr(
+                Vec3::<f32>::expr(0.0, 0.0, 0.0),
+                Vec3::<f32>::expr(0.25, 1.0, 2.5) * l * j * j,
+            )
+        };
+        world.emissive.write(dispatch_id().xy(), color.emission);
+        world
+            .display_opacity
+            .write(dispatch_id().xy(), color.opacity);
+    }));
+
+    julia.dispatch_blocking([world.width(), world.height(), 1]);
+
+    let scene = Scene::top();
+    for Draw {
+        brush,
+        center,
+        color,
+    } in scene.draws
+    {
+        match brush {
+            Brush::Rect(width, height) => {
+                rect_brush.dispatch(
+                    [world.width(), world.height(), 1],
+                    &center,
+                    &Vec2::new(width, height),
+                    &color,
+                );
+            }
+            Brush::Circle(radius) => {
+                circle_brush.dispatch([world.width(), world.height(), 1], &center, &radius, &color);
+            }
+        }
+    }
+
     #[rustfmt::skip]
     let draw = |pos: Vec2<f32>, r: f32, sq: bool, brush: (u32, u32)| {
         draw_kernel.dispatch(
@@ -544,7 +632,7 @@ pub fn main() {
                         println!("  Bounce {}: {}ms", i, time / 300.0);
                     }
                 }
-                println!("  Display: {}ms", total_runtime[num_bounces] / 300.0);
+                println!("  Display: {}ms", total_runtime[num_bounces] / 300.0 / 4.0);
                 println!("  Total: {}ms", total_runtime.iter().sum::<f32>() / 300.0);
                 total_runtime.fill(0.0);
             }

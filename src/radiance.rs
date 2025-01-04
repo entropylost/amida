@@ -53,7 +53,7 @@ impl TuningSettings {
 }
 
 struct MergeKernel {
-    kernels: Vec<luisa::runtime::Kernel<fn(u32)>>,
+    kernels: Vec<keter::runtime::Kernel<fn(u32)>>,
     dispatch_scaling: [u32; 3],
 }
 

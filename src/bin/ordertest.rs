@@ -2,12 +2,12 @@
 // https://github.com/LouisBavoil/ThreadGroupIDSwizzling/blob/master/ThreadGroupTilingX.hlsl
 // https://computergraphics.stackexchange.com/questions/9956/performance-of-compute-shaders-vs-fragment-shaders-for-deferred-rendering
 
-use luisa::lang::functions::{block_id, sync_block, thread_id};
-use luisa::lang::types::shared::Shared;
-use luisa::lang::types::vector::{Vec2, Vec3};
-use sefirot::prelude::*;
-use sefirot::utils::Singleton;
-use sefirot_testbed::App;
+use keter::lang::functions::{block_id, sync_block, thread_id};
+use keter::lang::types::shared::Shared;
+use keter::lang::types::vector::{Vec2, Vec3};
+use keter::prelude::*;
+use keter::utils::Singleton;
+use keter_testbed::App;
 
 #[tracked]
 fn color(time: Expr<u32>) -> Expr<Vec3<f32>> {

@@ -1,4 +1,4 @@
-use luisa::lang::{
+use keter::lang::{
     functions::{sync_block, thread_id},
     types::shared::Shared,
 };
@@ -27,7 +27,7 @@ pub fn merge(
     let samples = settings.bilinear_samples(probe, next_level);
 
     let (next_probe, weight) = samples.sample2(probe_offset);
-    let next_probe = luisa::min(next_probe, settings.level_size_expr(next_level).probes - 1);
+    let next_probe = keter::min(next_probe, settings.level_size_expr(next_level).probes - 1);
 
     let next_probe_pos = settings.probe_location(next_probe, next_level);
     let ray_start = probe_pos + ray_dir * interval.x;
