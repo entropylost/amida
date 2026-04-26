@@ -3,15 +3,15 @@
     "wall1": (
         diffuse: 0.8,
         opacity: 999.0,
-        display_opacity: 0.3,
+        display_opacity: 999.0,
     ),
     "wall2": (
         diffuse: 0.82,
-        display_opacity: 0.3,
+        display_opacity: 999.0,
     ),
     "wall3": (
         diffuse: 0.78,
-        display_opacity: 0.3,
+        display_opacity: 999.0,
     ),
     "redglass": (
         opacity: (0.01, 0.1, 0.1),

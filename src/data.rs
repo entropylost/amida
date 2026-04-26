@@ -40,6 +40,7 @@ impl Default for Settings {
                 num_cascades: 5,
                 spatial_factor: 1,
                 angular_factor: 2,
+                length_scaling: 4.0,
             },
             bounce_tuning: TuningSettings {
                 block_sizes: [
@@ -60,6 +61,7 @@ impl Default for Settings {
                 num_cascades: 6,
                 spatial_factor: 1,
                 angular_factor: 2,
+                length_scaling: 4.0,
             },
             display_tuning: TuningSettings {
                 block_sizes: [

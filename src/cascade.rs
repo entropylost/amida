@@ -10,6 +10,7 @@ pub struct CascadeSettings {
     pub num_cascades: u32,
     pub spatial_factor: u32, // default 1
     pub angular_factor: u32, // default 2
+    pub length_scaling: f32, // default 4.0
 }
 impl CascadeSettings {
     pub fn spacing(&self) -> u32 {
@@ -35,7 +36,7 @@ impl CascadeSettings {
     }
     #[tracked]
     pub fn interval_end(&self, level: Expr<u32>) -> Expr<f32> {
-        self.base_interval.1 * (1_u32 << (self.angular_factor * level)).cast_f32()
+        self.base_interval.1 * self.length_scaling.expr().powi(level.cast_i32())
     }
     #[tracked]
     pub fn interval(&self, level: Expr<u32>) -> Expr<Interval> {

@@ -1,4 +1,4 @@
-#![feature(array_chunks)]
+#![feature(iter_array_chunks)]
 
 use std::{
     collections::HashMap,
@@ -45,8 +45,8 @@ pub fn load_env(path: impl AsRef<Path> + Copy) -> Vec<FVec3> {
         unreachable!()
     };
     image
+        .into_iter()
         .array_chunks::<3>()
-        .copied()
         .map(FVec3::from)
         .collect::<Vec<_>>()
 }
@@ -143,7 +143,6 @@ pub fn main() {
 
     let app = App::new("Amida", grid_size)
         .scale(settings.pixel_size)
-        .dpi(settings.dpi)
         .agx()
         .init();
 
@@ -377,6 +376,11 @@ pub fn main() {
 
         let pos = dispatch_id().xy().cast_f32() + 0.5;
         let pos = 2.0 * ((pos / dispatch_size().xy().cast_f32()) - Vec2::expr(0.5, 0.5)) * r * 0.7;
+        let theta = 0.0_f32;
+        let pos = Vec2::expr(
+            pos.x * theta.cos() + pos.y * theta.sin(),
+            -pos.x * theta.sin() + pos.y * theta.cos(),
+        );
         let z = pos.var();
 
         let iter = u32::MAX.var();
@@ -389,54 +393,57 @@ pub fn main() {
         }
         let color = if iter > 30 {
             let iter = keter::min(iter, 1000);
-            let k = iter.cast_f32() / 500.0;
             let j = iter.cast_f32() / 60.0;
-            SceneColor::expr(
+            (
                 Vec3::<f32>::expr(0.1 * j, 0.0, 0.0),
                 Vec3::<f32>::splat_expr(0.3),
             )
         } else {
-            let k = keter::max(iter.cast_f32() - 200.0, 0.0) / 500.0;
             let j = iter.cast_f32() / 30.0;
             let l = if iter % 2 == 0 {
                 1.0_f32.expr()
             } else {
                 0.0.expr()
             };
-            SceneColor::expr(
+            (
                 Vec3::<f32>::expr(0.0, 0.0, 0.0),
-                Vec3::<f32>::expr(0.25, 1.0, 2.5) * l * j * j,
+                (Vec3::<f32>::expr(0.25, 1.0, 2.5) * l * j * j),
             )
         };
-        world.emissive.write(dispatch_id().xy(), color.emission);
-        world
-            .display_opacity
-            .write(dispatch_id().xy(), color.opacity);
+        world.emissive.write(dispatch_id().xy(), color.0);
+        world.display_opacity.write(dispatch_id().xy(), color.1);
     }));
 
-    julia.dispatch_blocking([world.width(), world.height(), 1]);
+    julia.dispatch_blocking([512, 512, 1]);
 
-    let scene = Scene::top();
-    for Draw {
-        brush,
-        center,
-        color,
-    } in scene.draws
-    {
-        match brush {
-            Brush::Rect(width, height) => {
-                rect_brush.dispatch(
-                    [world.width(), world.height(), 1],
-                    &center,
-                    &Vec2::new(width, height),
-                    &color,
-                );
-            }
-            Brush::Circle(radius) => {
-                circle_brush.dispatch([world.width(), world.height(), 1], &center, &radius, &color);
-            }
-        }
-    }
+    rect_brush.dispatch(
+        [512, 512, 1],
+        &Vec2::new(0.0, 0.0),
+        &Vec2::new(10000.0, 10.0),
+        &SceneColor::new(Vec3::splat(5.0), Vec3::splat(0.5)),
+    );
+
+    // let scene = Scene::point();
+    // for Draw {
+    //     brush,
+    //     center,
+    //     color,
+    // } in scene.draws
+    // {
+    //     match brush {
+    //         Brush::Rect(width, height) => {
+    //             rect_brush.dispatch(
+    //                 [world.width(), world.height(), 1],
+    //                 &center,
+    //                 &Vec2::new(width, height),
+    //                 &color,
+    //             );
+    //         }
+    //         Brush::Circle(radius) => {
+    //             circle_brush.dispatch([world.width(), world.height(), 1], &center, &radius, &color);
+    //         }
+    //     }
+    // }
 
     #[rustfmt::skip]
     let draw = |pos: Vec2<f32>, r: f32, sq: bool, brush: (u32, u32)| {
@@ -450,7 +457,7 @@ pub fn main() {
         );
     };
 
-    app.run(|rt, scope| {
+    app.run(|rt| {
         display_kernel
             .dispatch_async(
                 grid_dispatch,
@@ -460,9 +467,7 @@ pub fn main() {
                 &draw_square,
             )
             .debug("Display")
-            .execute_in(&scope);
-
-        drop(scope);
+            .execute_blocking();
 
         #[cfg(feature = "record")]
         if rt.pressed_key(KeyCode::KeyX) {
@@ -625,15 +630,15 @@ pub fn main() {
                     }
                 }
             }
-            if t % 300 == 0 {
+            if t % 20 == 0 {
                 println!("Runtime:");
                 if num_bounces > 0 {
                     for (i, time) in total_runtime.iter().enumerate().take(num_bounces) {
-                        println!("  Bounce {}: {}ms", i, time / 300.0);
+                        println!("  Bounce {}: {}ms", i, time / 20.0);
                     }
                 }
-                println!("  Display: {}ms", total_runtime[num_bounces] / 300.0 / 4.0);
-                println!("  Total: {}ms", total_runtime.iter().sum::<f32>() / 300.0);
+                println!("  Display: {}ms", total_runtime[num_bounces] / 20.0 / 4.0);
+                println!("  Total: {}ms", total_runtime.iter().sum::<f32>() / 20.0);
                 total_runtime.fill(0.0);
             }
         }

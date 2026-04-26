@@ -10,13 +10,13 @@
         Mouse(Forward): "moon",
     },
     cascades: (
-        base_interval: (0.0, 4.0),
+        base_interval: (0.0, 1.0),
         base_probe_spacing: 1.0,
         base_size: (
             probes: (512, 512),
-            facings: 16
+            facings: 4,
         ),
-        num_cascades: 5,
+        num_cascades: 6,
         spatial_factor: 1,
         angular_factor: 2,
     ),
